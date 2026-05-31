@@ -16,21 +16,22 @@ type User struct {
 }
 
 type Resource struct {
-	ID          int       `json:"id"`
-	UserID      int       `json:"user_id"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Region      string    `json:"region"`
-	CostPerHour float64   `json:"cost_per_hour"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int               `json:"id"`
+	UserID      int               `json:"user_id"`
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
+	Region      string            `json:"region"`
+	CostPerHour float64           `json:"cost_per_hour"`
+	Status      string            `json:"status"`
+	Tags        map[string]string `json:"tags"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 type Deployment struct {
-	ID          int       `json:"id"`
-	UserID      int       `json:"user_id"`
-	ResourceIDs []int     `json:"resource_ids"`
+	ID          int        `json:"id"`
+	UserID      int        `json:"user_id"`
+	ResourceIDs []int      `json:"resource_ids"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
@@ -57,13 +58,13 @@ type ResourceWithCost struct {
 
 func defaultCostPerHour(resourceType string) float64 {
 	costs := map[string]float64{
-		"Virtual Machine":   0.0860,
-		"Storage Account":   0.0180,
-		"Load Balancer":     0.0250,
-		"Database":          0.0150,
+		"Virtual Machine":    0.0860,
+		"Storage Account":    0.0180,
+		"Load Balancer":      0.0250,
+		"Database":           0.0150,
 		"Kubernetes Cluster": 0.1000,
 		"Serverless Function": 0.0000,
-		"CDN Profile":       0.0100,
+		"CDN Profile":        0.0100,
 	}
 	if c, ok := costs[resourceType]; ok {
 		return c
@@ -88,6 +89,7 @@ func (s *Server) migrate() error {
 			region VARCHAR(100) DEFAULT 'us-east-1',
 			cost_per_hour NUMERIC(10,4) DEFAULT 0,
 			status VARCHAR(50) DEFAULT 'running',
+			tags JSONB DEFAULT '{}',
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
 		)`,
@@ -105,7 +107,9 @@ func (s *Server) migrate() error {
 			return err
 		}
 	}
-	return nil
+	_, err := s.db.Exec(context.Background(),
+		`ALTER TABLE resources ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '{}'`)
+	return err
 }
 
 func (s *Server) createUser(ctx context.Context, username, passwordHash string) (User, error) {
@@ -155,7 +159,7 @@ func (s *Server) validateToken(ctx context.Context, userID int, token string) (b
 
 func (s *Server) listResources(ctx context.Context, userID int) ([]Resource, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT id, user_id, name, type, region, cost_per_hour, status, created_at, updated_at
+		`SELECT id, user_id, name, type, region, cost_per_hour, status, tags, created_at, updated_at
 		 FROM resources WHERE user_id = $1 ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -165,8 +169,13 @@ func (s *Server) listResources(ctx context.Context, userID int) ([]Resource, err
 	var resources []Resource
 	for rows.Next() {
 		var r Resource
-		if err := rows.Scan(&r.ID, &r.UserID, &r.Name, &r.Type, &r.Region, &r.CostPerHour, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		var tagsJSON []byte
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Name, &r.Type, &r.Region, &r.CostPerHour, &r.Status, &tagsJSON, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
+		}
+		json.Unmarshal(tagsJSON, &r.Tags)
+		if r.Tags == nil {
+			r.Tags = map[string]string{}
 		}
 		resources = append(resources, r)
 	}
@@ -183,15 +192,42 @@ func (s *Server) createResource(ctx context.Context, userID int, r Resource) (Re
 	if r.Status == "" {
 		r.Status = "running"
 	}
+	if r.Tags == nil {
+		r.Tags = map[string]string{}
+	}
+	tagsJSON, _ := json.Marshal(r.Tags)
 	var created Resource
+	var createdTags []byte
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO resources (user_id, name, type, region, cost_per_hour, status)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING id, user_id, name, type, region, cost_per_hour, status, created_at, updated_at`,
-		userID, r.Name, r.Type, r.Region, r.CostPerHour, r.Status,
+		`INSERT INTO resources (user_id, name, type, region, cost_per_hour, status, tags)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, user_id, name, type, region, cost_per_hour, status, tags, created_at, updated_at`,
+		userID, r.Name, r.Type, r.Region, r.CostPerHour, r.Status, string(tagsJSON),
 	).Scan(&created.ID, &created.UserID, &created.Name, &created.Type, &created.Region,
-		&created.CostPerHour, &created.Status, &created.CreatedAt, &created.UpdatedAt)
+		&created.CostPerHour, &created.Status, &createdTags, &created.CreatedAt, &created.UpdatedAt)
+	json.Unmarshal(createdTags, &created.Tags)
 	return created, err
+}
+
+func (s *Server) updateResource(ctx context.Context, userID, resourceID int, r Resource) (Resource, error) {
+	if r.Tags == nil {
+		r.Tags = map[string]string{}
+	}
+	tagsJSON, _ := json.Marshal(r.Tags)
+	var updated Resource
+	var updatedTags []byte
+	err := s.db.QueryRow(ctx,
+		`UPDATE resources SET name=$1, type=$2, region=$3, cost_per_hour=$4, status=$5, tags=$6, updated_at=NOW()
+		 WHERE id=$7 AND user_id=$8
+		 RETURNING id, user_id, name, type, region, cost_per_hour, status, tags, created_at, updated_at`,
+		r.Name, r.Type, r.Region, r.CostPerHour, r.Status, string(tagsJSON), resourceID, userID,
+	).Scan(&updated.ID, &updated.UserID, &updated.Name, &updated.Type, &updated.Region,
+		&updated.CostPerHour, &updated.Status, &updatedTags, &updated.CreatedAt, &updated.UpdatedAt)
+	if err != nil {
+		return Resource{}, err
+	}
+	json.Unmarshal(updatedTags, &updated.Tags)
+	return updated, nil
 }
 
 func (s *Server) deleteResource(ctx context.Context, userID, resourceID int) error {

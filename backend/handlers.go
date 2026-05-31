@@ -22,12 +22,13 @@ type loginResponse struct {
 	Token    string `json:"token"`
 }
 
-type createResourceRequest struct {
-	Name        string  `json:"name"`
-	Type        string  `json:"type"`
-	Region      string  `json:"region,omitempty"`
-	CostPerHour float64 `json:"cost_per_hour,omitempty"`
-	Status      string  `json:"status,omitempty"`
+type resourceRequest struct {
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
+	Region      string            `json:"region,omitempty"`
+	CostPerHour float64           `json:"cost_per_hour,omitempty"`
+	Status      string            `json:"status,omitempty"`
+	Tags        map[string]string `json:"tags,omitempty"`
 }
 
 type createDeploymentRequest struct {
@@ -129,7 +130,7 @@ func (s *Server) ListResources(w http.ResponseWriter, r *http.Request) {
 func (s *Server) CreateResource(w http.ResponseWriter, r *http.Request) {
 	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
 
-	var req createResourceRequest
+	var req resourceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -145,6 +146,7 @@ func (s *Server) CreateResource(w http.ResponseWriter, r *http.Request) {
 		Region:      req.Region,
 		CostPerHour: req.CostPerHour,
 		Status:      req.Status,
+		Tags:        req.Tags,
 	}
 
 	created, err := s.createResource(r.Context(), userID, resource)
@@ -154,6 +156,42 @@ func (s *Server) CreateResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, created)
+}
+
+func (s *Server) UpdateResource(w http.ResponseWriter, r *http.Request) {
+	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	resourceID, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid resource id")
+		return
+	}
+
+	var req resourceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" || req.Type == "" {
+		respondError(w, http.StatusBadRequest, "name and type are required")
+		return
+	}
+
+	resource := Resource{
+		Name:        req.Name,
+		Type:        req.Type,
+		Region:      req.Region,
+		CostPerHour: req.CostPerHour,
+		Status:      req.Status,
+		Tags:        req.Tags,
+	}
+
+	updated, err := s.updateResource(r.Context(), userID, resourceID, resource)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "resource not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, updated)
 }
 
 func (s *Server) DeleteResource(w http.ResponseWriter, r *http.Request) {

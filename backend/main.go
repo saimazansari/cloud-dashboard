@@ -44,6 +44,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", s.Login)
 	mux.HandleFunc("GET /api/resources", s.authMiddleware(s.ListResources))
 	mux.HandleFunc("POST /api/resources", s.authMiddleware(s.CreateResource))
+	mux.HandleFunc("PUT /api/resources/{id}", s.authMiddleware(s.UpdateResource))
 	mux.HandleFunc("DELETE /api/resources/{id}", s.authMiddleware(s.DeleteResource))
 	mux.HandleFunc("GET /api/cost-summary", s.authMiddleware(s.CostSummary))
 	mux.HandleFunc("POST /api/deployments", s.authMiddleware(s.TriggerDeployment))
@@ -63,7 +64,7 @@ func getEnv(key, fallback string) string {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-User-ID, X-Auth-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
