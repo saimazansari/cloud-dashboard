@@ -62,7 +62,6 @@ on:
         type: string
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
@@ -81,12 +80,10 @@ jobs:
         with:
           terraform_version: 1.10.5
 
-      - name: Azure Login (OIDC)
+      - name: Azure Login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Create tfvars
         run: |
