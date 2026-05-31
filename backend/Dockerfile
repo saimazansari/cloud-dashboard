@@ -2,8 +2,10 @@ FROM golang:1.24
 
 WORKDIR /app
 
-COPY . .
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN go build -o app .
+COPY . .
+RUN CGO_ENABLED=0 go build -o app .
 
 CMD ["./app"]

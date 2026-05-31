@@ -1,11 +1,40 @@
 services:
-
-  frontend:
-    build: ./frontend
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: clouddashboard
     ports:
-      - "5002:5000"
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     ports:
       - "8080:8080"
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/clouddashboard?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5002:5000"
+    environment:
+      BACKEND_URL: "http://backend:8080"
+      SECRET_KEY: "change-this-to-a-secure-random-key"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
