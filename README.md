@@ -33,10 +33,16 @@ Open **http://localhost:5002** and register an account.
 - **User authentication** — Register/login with bcrypt + session tokens
 - **Infrastructure inventory** — Add, edit, delete cloud resources (7 types)
 - **Cost tracking** — Auto-costed per resource type, hourly/monthly totals, cost breakdown by type
-- **Charts** — Pie chart (cost by type) and bar chart (monthly costs) via Chart.js
+- **Cost trend chart** — 30-day daily cost line chart with auto-seeded history
+- **Charts** — Pie chart (cost by type), bar chart (monthly costs), status breakdown
 - **Resource tags** — Key:value tagging system with inline display
 - **Deployments** — Select resources, trigger simulated async deployment, view history
-- **Dark mode** — Toggle in navbar, persisted in session
+- **Health monitoring** — Per-resource health status (healthy/degraded/offline) with animated status dots
+- **Budget tracker** — Configurable monthly budget with progress bar (green/amber/red) and inline editing
+- **Type filter pills** — One-click filtering by resource type
+- **Bulk actions** — Multi-select checkboxes for batch stop/terminate/delete
+- **Resource detail panel** — Click any row for a slide-out panel with full metadata + deployment history
+- **Professional dark theme** — Navy/gunmetal palette with indigo accent (always dark)
 - **CSV export** — Download inventory and cost data
 - **Search/filter** — Real-time table filtering
 
@@ -51,6 +57,9 @@ Open **http://localhost:5002** and register an account.
 | PUT | `/api/resources/{id}` | Yes | Update resource |
 | DELETE | `/api/resources/{id}` | Yes | Delete resource |
 | GET | `/api/cost-summary` | Yes | Cost aggregation |
+| GET | `/api/cost-history` | Yes | 30-day cost trend data |
+| GET | `/api/resources/{id}` | Yes | Resource detail with deployment history |
+| POST | `/api/resources/batch` | Yes | Bulk stop/terminate/delete |
 | POST | `/api/deployments` | Yes | Trigger deployment |
 | GET | `/api/deployments` | Yes | List deployments |
 

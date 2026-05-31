@@ -20,48 +20,50 @@ type Server struct {
 }
 
 func main() {
-	port := getEnv("PORT", "8080")
-	dbURL := getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/clouddashboard?sslmode=disable")
+	port := env("PORT", "8080")
+	databaseURL := env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/clouddashboard?sslmode=disable")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
-		log.Fatal("unable to connect to database:", err)
+		log.Fatalf("cannot connect to database: %v", err)
 	}
 	defer pool.Close()
 
-	s := &Server{db: pool}
+	server := &Server{db: pool}
 
-	if err := s.migrate(); err != nil {
-		log.Fatal("migration failed:", err)
+	if err := server.migrate(); err != nil {
+		log.Fatalf("database migration failed: %v", err)
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/register", server.Register)
+	mux.HandleFunc("POST /api/login", server.Login)
+	mux.HandleFunc("GET /api/resources", server.requireAuth(server.ListResources))
+	mux.HandleFunc("GET /api/resources/{id}", server.requireAuth(server.GetResource))
+	mux.HandleFunc("POST /api/resources", server.requireAuth(server.CreateResource))
+	mux.HandleFunc("PUT /api/resources/{id}", server.requireAuth(server.UpdateResource))
+	mux.HandleFunc("DELETE /api/resources/{id}", server.requireAuth(server.DeleteResource))
+	mux.HandleFunc("POST /api/resources/batch", server.requireAuth(server.BatchAction))
+	mux.HandleFunc("GET /api/cost-summary", server.requireAuth(server.CostSummary))
+	mux.HandleFunc("POST /api/deployments", server.requireAuth(server.TriggerDeployment))
+	mux.HandleFunc("GET /api/deployments", server.requireAuth(server.ListDeployments))
+	mux.HandleFunc("GET /api/cost-history", server.requireAuth(server.CostHistory))
 
-	mux.HandleFunc("POST /api/register", s.Register)
-	mux.HandleFunc("POST /api/login", s.Login)
-	mux.HandleFunc("GET /api/resources", s.authMiddleware(s.ListResources))
-	mux.HandleFunc("POST /api/resources", s.authMiddleware(s.CreateResource))
-	mux.HandleFunc("PUT /api/resources/{id}", s.authMiddleware(s.UpdateResource))
-	mux.HandleFunc("DELETE /api/resources/{id}", s.authMiddleware(s.DeleteResource))
-	mux.HandleFunc("GET /api/cost-summary", s.authMiddleware(s.CostSummary))
-	mux.HandleFunc("POST /api/deployments", s.authMiddleware(s.TriggerDeployment))
-	mux.HandleFunc("GET /api/deployments", s.authMiddleware(s.ListDeployments))
-
-	log.Printf("backend listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, corsMiddleware(mux)))
+	log.Printf("server listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, cors(mux)))
 }
 
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
 	return fallback
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -74,51 +76,55 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userIDStr := r.Header.Get("X-User-ID")
+		userID := r.Header.Get("X-User-ID")
 		token := r.Header.Get("X-Auth-Token")
-		if userIDStr == "" || token == "" {
-			respondError(w, http.StatusUnauthorized, "missing auth headers")
+
+		if userID == "" || token == "" {
+			writeError(w, http.StatusUnauthorized, "missing authentication headers")
 			return
 		}
-		userID, err := strconv.Atoi(userIDStr)
+
+		id, err := strconv.Atoi(userID)
 		if err != nil {
-			respondError(w, http.StatusUnauthorized, "invalid user id")
+			writeError(w, http.StatusUnauthorized, "invalid user id")
 			return
 		}
-		valid, err := s.validateToken(r.Context(), userID, token)
+
+		valid, err := s.validateToken(r.Context(), id, token)
 		if err != nil || !valid {
-			respondError(w, http.StatusUnauthorized, "invalid or expired token")
+			writeError(w, http.StatusUnauthorized, "invalid or expired session token")
 			return
 		}
+
 		next(w, r)
 	}
 }
 
-func generateToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+func newSessionToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b), nil
+	return hex.EncodeToString(bytes), nil
 }
 
-func respondJSON(w http.ResponseWriter, status int, data interface{}) {
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
 }
 
-func respondError(w http.ResponseWriter, status int, msg string) {
-	respondJSON(w, status, map[string]string{"error": msg})
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
 }
 
-func hashPassword(password string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(b), err
+func hashPassword(plaintext string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
+	return string(hash), err
 }
 
-func checkPassword(hash, password string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+func checkPassword(hash, plaintext string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plaintext)) == nil
 }
