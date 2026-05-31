@@ -1,0 +1,117 @@
+name: "Terraform: Deploy Azure Infrastructure"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment name (used in tags and naming)"
+        required: true
+        default: "demo"
+        type: string
+      location:
+        description: "Azure region"
+        required: true
+        default: "eastus"
+        type: choice
+        options:
+          - eastus
+          - eastus2
+          - westus
+          - westeurope
+          - uksouth
+          - southeastasia
+      resource_group_name:
+        description: "Azure Resource Group name"
+        required: true
+        default: "cloud-dashboard-demo"
+        type: string
+      deploy_vnet:
+        description: "Deploy Virtual Network?"
+        required: true
+        default: true
+        type: boolean
+      vnet_name:
+        description: "Virtual Network name (if deploying)"
+        required: false
+        default: "demo-vnet"
+        type: string
+      vnet_address_space:
+        description: "VNet CIDR (if deploying)"
+        required: false
+        default: "10.0.0.0/16"
+        type: string
+      deploy_nsg:
+        description: "Deploy Network Security Group?"
+        required: true
+        default: true
+        type: boolean
+      deploy_key_vault:
+        description: "Deploy Key Vault?"
+        required: true
+        default: false
+        type: boolean
+      deploy_storage:
+        description: "Deploy Storage Account?"
+        required: true
+        default: true
+        type: boolean
+      storage_account_name:
+        description: "Storage account name (leave empty to auto-generate)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create tfvars
+        run: |
+          cat <<EOF > deployment.tfvars
+          subscription_id      = "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          environment          = "${{ inputs.environment }}"
+          location             = "${{ inputs.location }}"
+          resource_group_name  = "${{ inputs.resource_group_name }}"
+          deploy_vnet          = ${{ inputs.deploy_vnet }}
+          vnet_name            = "${{ inputs.vnet_name }}"
+          vnet_address_space   = ["${{ inputs.vnet_address_space }}"]
+          deploy_nsg           = ${{ inputs.deploy_nsg }}
+          deploy_key_vault     = ${{ inputs.deploy_key_vault }}
+          deploy_storage       = ${{ inputs.deploy_storage }}
+          storage_account_name = "${{ inputs.storage_account_name }}"
+          EOF
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -var-file=deployment.tfvars -no-color
+
+      - name: Terraform Apply
+        run: terraform apply -var-file=deployment.tfvars -auto-approve
+
+      - name: Show Outputs
+        run: terraform output
