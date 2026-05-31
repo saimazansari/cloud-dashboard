@@ -1,4 +1,4 @@
-from flask import Flask, session, request, redirect, render_template_string, Response
+from flask import Flask, session, request, redirect, render_template_string, Response, url_for
 import requests
 import os
 import csv
@@ -11,104 +11,225 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
 
 BASE_TEMPLATE = """
 <!DOCTYPE html>
-<html data-theme="{{ 'dark' if session.get('dark_mode') else 'light' }}">
+<html>
 <head>
-    <title>Cloud Cost & Infrastructure Dashboard</title>
+    <title>Cloud Infrastructure Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
         :root {
-            --bg: #f0f2f5; --card-bg: white; --text: #333; --text-light: #888; --border: #e0e0e0;
-            --th-bg: #f8f9fa; --th-text: #555; --hover: #f1f3f4; --nav-bg: #f8bbd0; --nav-text: #880e4f;
-            --primary: #ec407a; --primary-hover: #d81b60; --outline-hover: #fce4ec; --focus: #fce4ec;
-            --danger: #d93025; --danger-hover: #b3261e; --success-bg: #e6f4ea; --success-text: #1e8e3e;
-            --error-bg: #fce8e6; --error-text: #d93025; --warn-bg: #fef7e0; --warn-text: #e37400;
-            --input-bg: white; --input-border: #dadce0; --tag-bg: #f3e8ff; --tag-text: #7c3aed;
-            --filter-bg: #fce4ec;
+            --bg: #090d14;
+            --sidebar-bg: #0e1419;
+            --card-bg: #111922;
+            --card-border: #1e2a36;
+            --text: #e1e7ef;
+            --text-muted: #8892a6;
+            --text-dim: #4a5568;
+            --primary: #7c6ff7;
+            --primary-hover: #6a5cf0;
+            --primary-glow: rgba(124,111,247,0.15);
+            --success: #4ade80;
+            --success-bg: rgba(74,222,128,0.12);
+            --warning: #fbbf24;
+            --warning-bg: rgba(251,191,36,0.12);
+            --danger: #f87171;
+            --danger-bg: rgba(248,113,113,0.12);
+            --info: #38bdf8;
+            --tag-bg: rgba(124,111,247,0.15);
+            --tag-text: #a78bfa;
+            --input-bg: #0e1419;
+            --input-border: #1e2a36;
+            --focus-ring: rgba(124,111,247,0.3);
+            --font-mono: 'SF Mono','Fira Code','Cascadia Code',monospace;
+            --font-sans: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
         }
-        [data-theme="dark"] {
-            --bg: #1a1a2e; --card-bg: #16213e; --text: #e0e0e0; --text-light: #aaa; --border: #2a2a4a;
-            --th-bg: #1e2a4a; --th-text: #ccc; --hover: #1e2a4a; --nav-bg: #2d1b3d; --nav-text: #f8bbd0;
-            --primary: #f06292; --primary-hover: #ec407a; --outline-hover: #2d1b3d; --focus: #4a2040;
-            --danger: #ef5350; --danger-hover: #e53935; --success-bg: #1b3a2b; --success-text: #81c784;
-            --error-bg: #3a1b1b; --error-text: #ef9a9a; --warn-bg: #3a2e1b; --warn-text: #ffcc80;
-            --input-bg: #1e2a4a; --input-border: #3a4a6a; --tag-bg: #2d1b3d; --tag-text: #f8bbd0;
-            --filter-bg: #2d1b3d;
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:var(--font-sans); background:var(--bg); color:var(--text); min-height:100vh; }
+        .layout { display:flex; min-height:100vh; }
+        .sidebar { width:220px; background:var(--sidebar-bg); border-right:1px solid var(--card-border); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:10; }
+        .sidebar-brand { padding:20px 18px 16px; font-weight:700; font-size:15px; letter-spacing:-0.3px; color:var(--primary); border-bottom:1px solid var(--card-border); display:flex; align-items:center; gap:8px; }
+        .sidebar-brand svg { flex-shrink:0; }
+        .sidebar-nav { flex:1; padding:12px 8px; display:flex; flex-direction:column; gap:2px; }
+        .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:6px; font-size:14px; color:var(--text-muted); text-decoration:none; transition:all .15s; font-weight:500; }
+        .sidebar-nav a:hover { background:rgba(255,255,255,0.04); color:var(--text); }
+        .sidebar-nav a.active { background:var(--primary-glow); color:var(--primary); }
+        .sidebar-nav a .nav-icon { width:18px; text-align:center; font-size:15px; }
+        .sidebar-footer { padding:12px 8px; border-top:1px solid var(--card-border); }
+        .sidebar-footer .user-info { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:6px; font-size:13px; color:var(--text-muted); }
+        .sidebar-footer .user-info .avatar { width:24px; height:24px; border-radius:50%; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; }
+        .sidebar-footer a { display:block; padding:8px 12px; border-radius:6px; font-size:13px; color:var(--danger); text-decoration:none; margin-top:2px; }
+        .sidebar-footer a:hover { background:var(--danger-bg); }
+        .main { margin-left:220px; flex:1; min-height:100vh; }
+        .topbar { padding:16px 28px; border-bottom:1px solid var(--card-border); display:flex; justify-content:space-between; align-items:center; background:var(--bg); }
+        .topbar h1 { font-size:18px; font-weight:600; color:var(--text); margin:0; letter-spacing:-0.2px; }
+        .topbar .topbar-actions { display:flex; align-items:center; gap:10px; }
+        .content { padding:24px 28px; }
+        .auth-wrap { max-width:420px; margin:80px auto; padding:0 16px; }
+        .card { background:var(--card-bg); border:1px solid var(--card-border); border-radius:10px; padding:24px; margin-bottom:20px; }
+        h1 { font-size:22px; font-weight:600; margin-bottom:16px; letter-spacing:-0.3px; }
+        h2 { font-size:15px; font-weight:600; color:var(--text-muted); margin-bottom:14px; letter-spacing:0.3px; text-transform:uppercase; }
+        table { width:100%; border-collapse:collapse; }
+        th { padding:10px 14px; text-align:left; font-size:11px; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--card-border); background:transparent; }
+        td { padding:12px 14px; border-bottom:1px solid var(--card-border); font-size:13px; }
+        tbody tr { transition:background .12s; }
+        tbody tr:hover { background:rgba(255,255,255,0.02); }
+        tbody tr:last-child td { border-bottom:none; }
+        .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; border:none; text-decoration:none; transition:all .15s; }
+        .btn-primary { background:var(--primary); color:#fff; }
+        .btn-primary:hover { background:var(--primary-hover); box-shadow:0 0 16px var(--primary-glow); }
+        .btn-danger { background:var(--danger-bg); color:var(--danger); }
+        .btn-danger:hover { background:rgba(248,113,113,0.2); }
+        .btn-outline { background:transparent; color:var(--text-muted); border:1px solid var(--card-border); }
+        .btn-outline:hover { border-color:var(--primary); color:var(--primary); }
+        .btn-sm { padding:5px 10px; font-size:12px; }
+        .btn-ghost { background:transparent; color:var(--text-dim); padding:5px 8px; border-radius:4px; font-size:13px; }
+        .btn-ghost:hover { background:rgba(255,255,255,0.05); color:var(--text); }
+        .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+        .stat-card { text-align:left; padding:18px 20px; border-radius:10px; border:1px solid var(--card-border); background:var(--card-bg); position:relative; overflow:hidden; }
+        .stat-card .stat-icon { font-size:22px; margin-bottom:10px; }
+        .stat-card .stat-value { font-size:24px; font-weight:700; letter-spacing:-0.5px; font-family:var(--font-mono); }
+        .stat-card .stat-label { font-size:12px; color:var(--text-muted); margin-top:2px; font-weight:500; text-transform:uppercase; letter-spacing:0.3px; }
+        .stat-card.g1 .stat-value { color:#a78bfa; }
+        .stat-card.g2 .stat-value { color:#4ade80; }
+        .stat-card.g3 .stat-value { color:#fbbf24; }
+        .stat-card.g4 .stat-value { color:#38bdf8; }
+        .stat-card::after { content:''; position:absolute; top:0; right:0; width:80px; height:80px; border-radius:50%; opacity:0.06; transform:translate(30%,-30%); }
+        .stat-card.g1::after { background:#a78bfa; }
+        .stat-card.g2::after { background:#4ade80; }
+        .stat-card.g3::after { background:#fbbf24; }
+        .stat-card.g4::after { background:#38bdf8; }
+        .stat-card .stat-sub { font-size:11px; color:var(--text-dim); margin-top:4px; font-family:var(--font-mono); }
+        .chart-row { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+        .chart-box { text-align:center; padding:8px 0; }
+        .chart-box canvas { max-height:220px; margin:0 auto; }
+        .badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:0.2px; }
+        .badge-success { background:var(--success-bg); color:var(--success); }
+        .badge-warning { background:var(--warning-bg); color:var(--warning); }
+        .badge-danger { background:var(--danger-bg); color:var(--danger); }
+        .badge-info { background:var(--primary-glow); color:var(--info); }
+        .badge-neutral { background:rgba(255,255,255,0.04); color:var(--text-muted); }
+        .tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-family:var(--font-mono); background:var(--tag-bg); color:var(--tag-text); margin:1px 2px; }
+        .status-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+        .status-dot.running, .status-dot.completed { background:var(--success); box-shadow:0 0 6px rgba(74,222,128,0.5); }
+        .status-dot.stopped, .status-dot.in_progress { background:var(--warning); box-shadow:0 0 6px rgba(251,191,36,0.4); }
+        .status-dot.terminated { background:var(--danger); }
+        .filter-pills { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+        .filter-pill { padding:4px 12px; border-radius:20px; font-size:12px; font-weight:500; cursor:pointer; border:1px solid var(--card-border); background:transparent; color:var(--text-muted); transition:all .15s; font-family:var(--font-sans); }
+        .filter-pill:hover { border-color:var(--primary); color:var(--primary); }
+        .filter-pill.active { background:var(--primary-glow); border-color:var(--primary); color:var(--primary); }
+        .progress-bar { height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; margin-top:8px; }
+        .progress-bar .fill { height:100%; border-radius:3px; transition:width .4s; }
+        .progress-bar .fill.safe { background:var(--success); }
+        .progress-bar .fill.warn { background:var(--warning); }
+        .progress-bar .fill.danger { background:var(--danger); }
+        .budget-input { background:transparent; border:1px solid var(--card-border); color:var(--text); padding:4px 8px; border-radius:4px; font-size:12px; font-family:var(--font-mono); width:80px; text-align:center; outline:none; }
+        .budget-input:focus { border-color:var(--primary); }
+        .filter-input { padding:7px 12px; border:1px solid var(--input-border); border-radius:6px; font-size:13px; background:var(--input-bg); color:var(--text); font-family:var(--font-mono); width:200px; outline:none; transition:border-color .15s; }
+        .filter-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--focus-ring); }
+        .filter-input::placeholder { color:var(--text-dim); }
+        .actions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+        .actions .btn-ghost { opacity:0; transition:opacity .12s; }
+        tbody tr:hover .actions .btn-ghost { opacity:1; }
+        .empty { text-align:center; color:var(--text-muted); padding:48px 0; font-size:14px; }
+        .empty a { color:var(--primary); text-decoration:none; }
+        .empty a:hover { text-decoration:underline; }
+        .error { background:var(--danger-bg); color:var(--danger); padding:12px 16px; border-radius:6px; margin-bottom:16px; font-size:13px; border:1px solid rgba(248,113,113,0.15); }
+        .success { background:var(--success-bg); color:var(--success); padding:12px 16px; border-radius:6px; margin-bottom:16px; font-size:13px; }
+        .form-group { margin-bottom:14px; }
+        .form-group label { display:block; font-size:12px; font-weight:600; margin-bottom:5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px; }
+        .form-group input, .form-group select, .form-group textarea { width:100%; padding:9px 12px; border:1px solid var(--input-border); border-radius:6px; font-size:13px; background:var(--input-bg); color:var(--text); outline:none; font-family:var(--font-mono); transition:border-color .15s; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--focus-ring); }
+        .form-group textarea { resize:vertical; }
+        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .meta { color:var(--text-dim); font-size:12px; margin-bottom:16px; font-family:var(--font-mono); }
+        .chart-wrap { max-width:360px; margin:0 auto; }
+        .stat { text-align:center; padding:16px; }
+        .stat .value { font-size:26px; font-weight:700; color:var(--primary); font-family:var(--font-mono); letter-spacing:-0.5px; }
+        .stat .label { font-size:12px; color:var(--text-muted); margin-top:2px; text-transform:uppercase; letter-spacing:0.3px; font-weight:600; }
+        .inline-form { display:inline; }
+        .mono { font-family:var(--font-mono); font-size:13px; }
+        .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px; }
+        .section-header h1 { margin-bottom:0; }
+        .type-icon { font-size:16px; margin-right:6px; vertical-align:middle; }
+        .resource-name { font-weight:500; }
+        .resource-meta { font-size:11px; color:var(--text-dim); font-family:var(--font-mono); margin-top:2px; }
+        .age { font-size:11px; color:var(--text-dim); font-family:var(--font-mono); }
+        @media (max-width:900px) {
+            .sidebar { width:56px; }
+            .sidebar-brand span, .sidebar-nav a span, .sidebar-footer .user-info span, .sidebar-footer a span { display:none; }
+            .sidebar-nav a { justify-content:center; padding:9px; }
+            .sidebar-footer .user-info { justify-content:center; }
+            .main { margin-left:56px; }
+            .grid-4 { grid-template-columns:repeat(2,1fr); }
+            .chart-row { grid-template-columns:1fr; }
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); transition: background .2s, color .2s; }
-        nav { background: var(--nav-bg); color: var(--nav-text); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
-        nav a { color: var(--nav-text); text-decoration: none; margin-left: 18px; font-size: 14px; }
-        nav a:hover { text-decoration: underline; }
-        nav .brand { font-weight: 700; font-size: 18px; }
-        nav .brand a { margin: 0; }
-        .theme-btn { background: none; border: 1px solid var(--nav-text); color: var(--nav-text); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 14px; margin-left: 12px; }
-        .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
-        .card { background: var(--card-bg); border-radius: 8px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: background .2s; }
-        h1 { font-size: 24px; margin-bottom: 16px; color: var(--primary); }
-        h2 { font-size: 18px; margin-bottom: 12px; color: var(--text-light); }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
-        th { background: var(--th-bg); color: var(--th-text); font-weight: 600; }
-        tr:hover { background: var(--hover); }
-        .btn { display: inline-block; padding: 8px 18px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; text-decoration: none; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-hover); }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-danger:hover { background: var(--danger-hover); }
-        .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
-        .btn-outline:hover { background: var(--outline-hover); }
-        .btn-sm { padding: 4px 12px; font-size: 12px; }
-        .error { background: var(--error-bg); color: var(--error-text); padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
-        .success { background: var(--success-bg); color: var(--success-text); padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
-        .form-group { margin-bottom: 14px; }
-        .form-group label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; color: var(--text-light); }
-        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--input-border); border-radius: 6px; font-size: 14px; background: var(--input-bg); color: var(--text); }
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--focus); }
-        .form-group textarea { resize: vertical; font-family: monospace; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .stat { text-align: center; padding: 20px; }
-        .stat .value { font-size: 28px; font-weight: 700; color: var(--primary); }
-        .stat .label { font-size: 13px; color: var(--text-light); margin-top: 4px; }
-        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .badge-success { background: var(--success-bg); color: var(--success-text); }
-        .badge-warning { background: var(--warn-bg); color: var(--warn-text); }
-        .badge-info { background: var(--filter-bg); color: var(--primary); }
-        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: var(--tag-bg); color: var(--tag-text); margin: 1px 2px; }
-        .empty { text-align: center; color: var(--text-light); padding: 40px 0; font-size: 15px; }
-        .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-        .meta { color: var(--text-light); font-size: 13px; margin-bottom: 16px; }
-        .inline-form { display: inline; }
-        .filter-input { padding: 6px 12px; border: 1px solid var(--input-border); border-radius: 6px; font-size: 13px; background: var(--input-bg); color: var(--text); max-width: 200px; }
-        .chart-wrap { max-width: 400px; margin: 0 auto; }
+        @media (max-width:600px) {
+            .content { padding:16px; }
+            .grid-4 { grid-template-columns:1fr; }
+            .topbar { padding:12px 16px; flex-direction:column; gap:8px; align-items:stretch; }
+        }
     </style>
 </head>
 <body>
-    <nav>
-        <div class="brand"><a href="/">Cloud Dashboard</a></div>
-        <div>
-            {% if session.get('user_id') %}
-                <span style="font-size:14px;">{{ session.get('username') }}</span>
-                <a href="/">Resources</a>
-                <a href="/cost-summary">Costs</a>
-                <a href="/deployments">Deployments</a>
-                <a href="/logout">Logout</a>
-                <button class="theme-btn" onclick="fetch('/toggle-theme',{method:'POST'}).then(()=>location.reload())">{{ '☀️' if session.get('dark_mode') else '🌙' }}</button>
-            {% else %}
-                <a href="/login">Login</a>
-                <a href="/register">Register</a>
-            {% endif %}
+{% if session.get('user_id') %}
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <span>CloudDash</span>
         </div>
-    </nav>
-    <div class="container">
-        {% block content %}{% endblock %}
-    </div>
-    <script>
-        function filterTable(inputId, tableId) {
-            var q = document.getElementById(inputId).value.toLowerCase();
-            var rows = document.getElementById(tableId).querySelectorAll('tbody tr');
-            rows.forEach(function(r) { r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
-        }
-    </script>
+        <nav class="sidebar-nav">
+            <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
+                <span class="nav-icon">⎔</span><span>Resources</span>
+            </a>
+            <a href="/cost-summary" class="{{ 'active' if request.path == '/cost-summary' else '' }}">
+                <span class="nav-icon">$</span><span>Costs</span>
+            </a>
+            <a href="/deployments" class="{{ 'active' if request.path == '/deployments' else '' }}">
+                <span class="nav-icon">⇪</span><span>Deployments</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="avatar">{{ session.get('username','U')[:1].upper() }}</div>
+                <span>{{ session.get('username') }}</span>
+            </div>
+            <a href="/logout"><span>⏻</span> <span>Logout</span></a>
+        </div>
+    </aside>
+    <main class="main">
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+</div>
+{% else %}
+<div class="auth-wrap">
+    {% block content %}{% endblock %}
+</div>
+{% endif %}
+<script>
+function filterTable(inputId, tableId) {
+    var q = document.getElementById(inputId).value.toLowerCase();
+    var rows = document.getElementById(tableId).querySelectorAll('tbody tr');
+    rows.forEach(function(r) { r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+}
+function timeAgo(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso.replace('Z','+00:00'));
+    var s = Math.floor((Date.now() - d) / 1000);
+    if (s < 60) return s + 's ago';
+    var m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+    var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+    var days = Math.floor(h / 24); if (days < 30) return days + 'd ago';
+    return Math.floor(days / 30) + 'mo ago';
+}
+function renderAges() {
+    document.querySelectorAll('[data-age]').forEach(function(el) {
+        el.textContent = timeAgo(el.getAttribute('data-age'));
+    });
+}
+document.addEventListener('DOMContentLoaded', renderAges);
+</script>
 </body>
 </html>
 """
@@ -174,33 +295,104 @@ def tags_html(tags):
         return ""
     return " ".join(f'<span class="tag">{k}:{v}</span>' for k, v in sorted(tags.items()))
 
+STATUS_DOT = '<span class="status-dot %s"></span>'
+TYPE_ICONS = {
+    "Virtual Machine": "🖥️",
+    "Kubernetes Cluster": "⎈",
+    "Load Balancer": "⚖️",
+    "Storage Account": "💾",
+    "Database": "🗄️",
+    "CDN Profile": "🌐",
+    "Serverless Function": "⚡",
+}
+
 DASHBOARD_TEMPLATE = """
+<div class="grid-4">
+    <div class="stat-card g1">
+        <div class="stat-icon">🖥️</div>
+        <div class="stat-value">{{ stats.total }}</div>
+        <div class="stat-label">Total Resources</div>
+    </div>
+    <div class="stat-card g2">
+        <div class="stat-icon">❤️</div>
+        <div class="stat-value">{{ health.healthy }}</div>
+        <div class="stat-label">Healthy</div>
+        <div class="stat-sub">{{ health.degraded }} degraded · {{ health.offline }} offline</div>
+    </div>
+    <div class="stat-card g3">
+        <div class="stat-icon">$</div>
+        <div class="stat-value">${{ "%.0f"|format(stats.monthly_cost) }}</div>
+        <div class="stat-label">Est. Monthly Cost</div>
+        <div class="stat-sub">${{ "%.2f"|format(stats.hourly_cost) }}/hr</div>
+    </div>
+    <div class="stat-card g4">
+        <div class="stat-icon">⇪</div>
+        <div class="stat-value">{{ stats.deployments }}</div>
+        <div class="stat-label">Deployments</div>
+    </div>
+</div>
+
+{% if budget %}
+<div class="card" style="padding:16px 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+            <span style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.3px;">Budget Utilization</span>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${{ "%.0f"|format(stats.monthly_cost) }} of ${{ "%.0f"|format(budget) }} used</div>
+        </div>
+        <div style="text-align:right;">
+            <span style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:{% if budget_pct < 70 %}var(--success){% elif budget_pct < 90 %}var(--warning){% else %}var(--danger){% endif %};">{{ budget_pct }}%</span>
+            <form method="post" action="/set-budget" style="display:inline-flex;align-items:center;gap:4px;margin-left:12px;">
+                <span style="font-size:11px;color:var(--text-dim);">$</span>
+                <input class="budget-input" type="number" name="budget" value="{{ "%.0f"|format(budget) }}" min="1" step="10">
+                <button class="btn-ghost" style="font-size:11px;">Set</button>
+            </form>
+        </div>
+    </div>
+    <div class="progress-bar">
+        <div class="fill {% if budget_pct < 70 %}safe{% elif budget_pct < 90 %}warn{% else %}danger{% endif %}" style="width:{{ budget_pct }}%;"></div>
+    </div>
+</div>
+{% endif %}
+
+{% if dash_type_labels != "[]" %}
+<div class="card chart-row">
+    <div class="chart-box"><h2>By Type</h2><canvas id="dashPieChart"></canvas></div>
+    <div class="chart-box"><h2>By Status</h2><canvas id="dashStatusChart"></canvas></div>
+</div>
+{% endif %}
+
 <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+    <div class="section-header">
         <h1>Infrastructure Inventory</h1>
         <div class="actions">
-            <input class="filter-input" id="filterInput" placeholder="Search..." oninput="filterTable('filterInput','resourceTable')">
-            <a href="/resources/add" class="btn btn-primary">+ Add</a>
+            <input class="filter-input" id="filterInput" placeholder="Search resources..." oninput="filterTable('filterInput','resourceTable')">
+            <a href="/resources/add" class="btn btn-primary">+ Add Resource</a>
             <a href="/export/csv/resources" class="btn btn-outline">CSV</a>
         </div>
     </div>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     {% if resources %}
+    <div class="filter-pills" id="typePills"></div>
     <table id="resourceTable">
-        <thead><tr><th>Name</th><th>Type</th><th>Region</th><th>Cost/hr</th><th>Tags</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Type</th><th>Region</th><th>Cost</th><th>Tags</th><th>Health</th><th>Status</th><th>Age</th><th></th></tr></thead>
         <tbody>
             {% for r in resources %}
-            <tr>
-                <td>{{ r.name }}</td>
-                <td><span class="badge badge-info">{{ r.type }}</span></td>
-                <td>{{ r.region }}</td>
-                <td>${{ "%.4f"|format(r.cost_per_hour) }}</td>
+            <tr data-type="{{ r.type }}" data-health="{{ r.health }}">
+                <td>
+                    <div class="resource-name">{{ r.type_icon|safe }} {{ r.name }}</div>
+                    <div class="resource-meta">ID: {{ r.id }}</div>
+                </td>
+                <td><span class="badge badge-neutral">{{ r.type }}</span></td>
+                <td class="mono">{{ r.region }}</td>
+                <td class="mono">${{ "%.4f"|format(r.cost_per_hour) }}</td>
                 <td>{{ r.tags_html|safe }}</td>
-                <td><span class="badge badge-success">{{ r.status }}</span></td>
+                <td><span class="status-dot {{ r.health }}"></span><span class="badge badge-{% if r.health == 'healthy' %}success{% elif r.health == 'degraded' %}warning{% else %}neutral{% endif %}">{{ r.health }}</span></td>
+                <td><span class="badge badge-{% if r.status == 'running' %}success{% elif r.status == 'stopped' %}warning{% else %}danger{% endif %}">{{ r.status }}</span></td>
+                <td><span class="age" data-age="{{ r.created_at }}">{{ r.created_at[:10] if r.created_at else '--' }}</span></td>
                 <td class="actions">
-                    <a href="/resources/{{ r.id }}/edit" class="btn btn-outline btn-sm">Edit</a>
+                    <a href="/resources/{{ r.id }}/edit" class="btn-ghost" title="Edit">✎</a>
                     <form class="inline-form" method="post" action="/resources/{{ r.id }}/delete" onsubmit="return confirm('Delete this resource?')">
-                        <button class="btn btn-danger btn-sm">Del</button>
+                        <button class="btn-ghost" title="Delete" style="color:var(--danger)">✕</button>
                     </form>
                 </td>
             </tr>
@@ -208,9 +400,78 @@ DASHBOARD_TEMPLATE = """
         </tbody>
     </table>
     {% else %}
-    <div class="empty">No resources yet. <a href="/resources/add">Add your first resource</a></div>
+    <div class="empty">
+        <div style="font-size:40px;margin-bottom:12px;">⎔</div>
+        <div>No infrastructure resources yet.</div>
+        <div style="margin-top:16px;"><a href="/resources/add" class="btn btn-primary">+ Add Your First Resource</a></div>
+    </div>
     {% endif %}
 </div>
+
+{% if recent_deploys %}
+<div class="card">
+    <div class="section-header" style="margin-bottom:12px;">
+        <h2>Recent Deployments</h2>
+        <a href="/deployments" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <table>
+        <tr><th>ID</th><th>Resources</th><th>Status</th><th>Age</th></tr>
+        {% for d in recent_deploys %}
+        <tr>
+            <td class="mono">#{{ d.id }}</td>
+            <td>{{ d.resource_ids|length }} resource(s)</td>
+            <td>
+                <span class="status-dot {{ d.status }}"></span>
+                <span class="badge badge-{% if d.status == 'completed' %}success{% elif d.status == 'in_progress' %}warning{% else %}neutral{% endif %}">{{ d.status }}</span>
+            </td>
+            <td><span class="age" data-age="{{ d.created_at }}">{{ d.created_at[:10] if d.created_at else '--' }}</span></td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+<script>
+{% if dash_type_labels != "[]" %}
+(function() {
+    var tc = '#8892a6';
+    var colors = ['#7c6ff7','#a78bfa','#c084fc','#e879f9','#f472b6','#fb923c','#fbbf24'];
+    new Chart(document.getElementById('dashPieChart'), {
+        type: 'doughnut',
+        data: { labels: {{ dash_type_labels|safe }}, datasets: [{ data: {{ dash_type_counts|safe }}, backgroundColor: colors }] },
+        options: { plugins: { legend: { position: 'bottom', labels: { color: tc, boxWidth: 12, font: { size: 11 } } } }, responsive: true, maintainAspectRatio: true }
+    });
+    var statusColors = {'running':'#4ade80','stopped':'#fbbf24','terminated':'#f87171'};
+    var statusLabels = {{ dash_status_labels|safe }};
+    var statusData = {{ dash_status_counts|safe }};
+    new Chart(document.getElementById('dashStatusChart'), {
+        type: 'doughnut',
+        data: { labels: statusLabels, datasets: [{ data: statusData, backgroundColor: statusLabels.map(function(s){return statusColors[s]||'#8892a6';}) }] },
+        options: { plugins: { legend: { position: 'bottom', labels: { color: tc, boxWidth: 12, font: { size: 11 } } } }, responsive: true, maintainAspectRatio: true }
+    });
+})();
+{% endif %}
+
+// Type filter pills
+(function() {
+    var types = {};
+    document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
+        types[r.getAttribute('data-type')] = true;
+    });
+    var pills = document.getElementById('typePills');
+    if (!pills || Object.keys(types).length < 2) return;
+    var all = document.createElement('button');
+    all.className = 'filter-pill active'; all.textContent = 'All';
+    all.onclick = function(){ document.querySelectorAll('.filter-pill').forEach(function(p){p.classList.remove('active');}); all.classList.add('active'); document.querySelectorAll('#resourceTable tbody tr').forEach(function(r){r.style.display='';}); };
+    pills.appendChild(all);
+    Object.keys(types).sort().forEach(function(t) {
+        var b = document.createElement('button');
+        b.className = 'filter-pill'; b.textContent = t;
+        b.onclick = function(){ document.querySelectorAll('.filter-pill').forEach(function(p){p.classList.remove('active');}); b.classList.add('active'); document.querySelectorAll('#resourceTable tbody tr').forEach(function(r){r.style.display=r.getAttribute('data-type')===t?'':'none';}); };
+        pills.appendChild(b);
+    });
+})();
+</script>
 """
 
 @app.route("/")
@@ -223,10 +484,61 @@ def dashboard():
     if isinstance(data, list):
         for r in data:
             r["tags_html"] = tags_html(r.get("tags"))
+            r["type_icon"] = TYPE_ICONS.get(r["type"], "⎔")
+            if r["status"] == "running":
+                r["health"] = "healthy"
+            elif r["status"] == "stopped":
+                r["health"] = "degraded"
+            else:
+                r["health"] = "offline"
         resources = data
     elif isinstance(data, dict) and "error" in data:
         error = data["error"]
-    return render_page(DASHBOARD_TEMPLATE, resources=resources, error=error)
+
+    stats = {"total": 0, "running": 0, "stopped": 0, "terminated": 0, "monthly_cost": 0, "hourly_cost": 0, "deployments": 0}
+    health = {"healthy": 0, "degraded": 0, "offline": 0}
+    dash_type_labels = "[]"
+    dash_type_counts = "[]"
+    dash_status_labels = "[]"
+    dash_status_counts = "[]"
+    recent_deploys = []
+    budget = session.get("budget", 200)
+    budget_pct = 0
+
+    if resources:
+        by_type = {}
+        by_status = {}
+        hourly_total = 0
+        for r in resources:
+            by_type[r["type"]] = by_type.get(r["type"], 0) + 1
+            by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+            hourly_total += r.get("cost_per_hour", 0)
+            health[r["health"]] = health.get(r["health"], 0) + 1
+        stats["total"] = len(resources)
+        stats["running"] = by_status.get("running", 0)
+        stats["stopped"] = by_status.get("stopped", 0)
+        stats["terminated"] = by_status.get("terminated", 0)
+        stats["hourly_cost"] = round(hourly_total, 4)
+        stats["monthly_cost"] = round(hourly_total * 730, 2)
+        budget_pct = min(100, round(stats["monthly_cost"] / budget * 100, 1))
+        dash_type_labels = json.dumps(list(by_type.keys()))
+        dash_type_counts = json.dumps(list(by_type.values()))
+        dash_status_labels = json.dumps(list(by_status.keys()))
+        dash_status_counts = json.dumps(list(by_status.values()))
+
+    deploy_data = api_get("/api/deployments")
+    if isinstance(deploy_data, list):
+        stats["deployments"] = len(deploy_data)
+        recent_deploys = deploy_data[:5]
+
+    return render_page(DASHBOARD_TEMPLATE, resources=resources, error=error,
+        stats=stats, health=health,
+        budget=budget, budget_pct=budget_pct,
+        dash_type_labels=dash_type_labels,
+        dash_type_counts=dash_type_counts,
+        dash_status_labels=dash_status_labels,
+        dash_status_counts=dash_status_counts,
+        recent_deploys=recent_deploys)
 
 def resource_form_html(method, action, values=None, error=None):
     name = values.get("name", "") if values else ""
@@ -525,10 +837,15 @@ def register():
         return render_page(REGISTER_TEMPLATE, error=result.get("error", "Registration failed"))
     return render_page(REGISTER_TEMPLATE)
 
-@app.route("/toggle-theme", methods=["POST"])
-def toggle_theme():
-    session["dark_mode"] = not session.get("dark_mode", False)
-    return ("", 204)
+@app.route("/set-budget", methods=["POST"])
+def set_budget():
+    if not session.get("user_id"):
+        return redirect("/login")
+    try:
+        session["budget"] = max(1, int(float(request.form.get("budget", 200))))
+    except (ValueError, TypeError):
+        pass
+    return redirect("/")
 
 @app.route("/logout")
 def logout():
