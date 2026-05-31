@@ -22,7 +22,6 @@ RESOURCE_COLORS = {
     "Key Vault": "#e879f9",
     "Public IP": "#06b6d4",
     "Network Watcher": "#6366f1",
-    "Disk": "#84cc16",
     "Container Registry": "#ec4899",
     "Managed Disk": "#84cc16",
 }
@@ -156,13 +155,9 @@ LAYOUT = """
         }
         .btn-primary { background:var(--primary); color:#fff; }
         .btn-primary:hover { background:var(--primary-hover); box-shadow:0 0 20px var(--primary-glow); }
-        .btn-danger { background:var(--danger-bg); color:var(--danger); }
-        .btn-danger:hover { background:rgba(248,113,113,0.15); }
         .btn-outline { background:transparent; color:var(--text-muted); border:1px solid var(--card-border); }
         .btn-outline:hover { border-color:var(--primary); color:var(--primary); box-shadow:0 0 12px var(--primary-glow); }
         .btn-sm { padding:5px 10px; font-size:12px; }
-        .btn-ghost { background:transparent; color:var(--text-dim); padding:5px 8px; border-radius:4px; font-size:13px; }
-        .btn-ghost:hover { background:rgba(255,255,255,0.04); color:var(--text); }
         .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
         .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
         .stat-card {
@@ -206,7 +201,6 @@ LAYOUT = """
         .badge-success { background:var(--success-bg); color:var(--success); }
         .badge-warning { background:var(--warning-bg); color:var(--warning); }
         .badge-danger { background:var(--danger-bg); color:var(--danger); }
-        .badge-info { background:var(--tag-bg); color:var(--info); }
         .badge-neutral { background:rgba(255,255,255,0.03); color:#7f8fa6; }
         .tag {
             display:inline-block; padding:2px 8px; border-radius:4px;
@@ -239,8 +233,6 @@ LAYOUT = """
         .filter-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--focus-ring); }
         .filter-input::placeholder { color:var(--text-dim); }
         .actions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-        .actions .btn-ghost { opacity:0; transition:opacity .12s; }
-        tbody tr:hover .actions .btn-ghost { opacity:1; }
         .empty { text-align:center; color:var(--text-muted); padding:48px 0; font-size:14px; }
         .empty a { color:var(--primary); text-decoration:none; }
         .empty a:hover { text-decoration:underline; }
@@ -266,7 +258,6 @@ LAYOUT = """
         .age { font-size:11px; color:var(--text-dim); font-family:var(--font-mono); }
         .meta { color:var(--text-dim); font-size:12px; margin-bottom:16px; font-family:var(--font-mono); }
         .mono { font-family:var(--font-mono); font-size:13px; }
-        .inline-form { display:inline; }
         .panel-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:50; opacity:0; pointer-events:none; transition:opacity .25s; backdrop-filter:blur(2px); }
         .panel-overlay.open { opacity:1; pointer-events:auto; }
         .slide-panel {
@@ -429,12 +420,6 @@ function updateRefreshTime() {
         if (el) el.textContent = secs + 's ago';
     }, 10000);
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    renderAges();
-    animateCounters();
-    updateRefreshTime();
-});
 </script>
 </body>
 </html>
@@ -556,22 +541,10 @@ DASHBOARD_PAGE = """
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
     {% if resources %}
-    <div class="bulk-bar" id="bulkBar" style="display:none;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:var(--primary-glow);border-radius:6px;border:1px solid rgba(124,111,247,0.2);">
-        <span style="font-size:13px;color:var(--text-muted);"><span id="bulkCount">0</span> selected</span>
-        <button class="btn btn-sm btn-primary" onclick="bulkAction('stop')">Stop</button>
-        <button class="btn btn-sm btn-primary" onclick="bulkAction('terminate')">Terminate</button>
-        <button class="btn btn-sm btn-danger" onclick="bulkAction('delete')">Delete</button>
-        <button class="btn btn-sm btn-outline" onclick="clearSelection()">Clear</button>
-    </div>
-    <form id="bulkForm" method="post" action="/resources/bulk" style="display:none;">
-        <input type="hidden" name="action" id="bulkActionInput">
-        <input type="hidden" name="ids" id="bulkIdsInput">
-    </form>
     <div class="type-filter"><select id="typeFilter" onchange="filterByType(this.value)"><option value="">All Types</option></select></div>
     <div class="table-scroll"><table id="resourceTable">
         <thead>
             <tr>
-                <th style="width:32px;"><input type="checkbox" id="selectAll" onchange="toggleAll()"></th>
                 <th style="width:32px;">#</th>
                 <th>Name</th>
                 <th>Type</th>
@@ -586,7 +559,6 @@ DASHBOARD_PAGE = """
         <tbody>
             {% for resource in resources %}
             <tr data-type="{{ resource.type }}" data-health="{{ resource.health }}" data-id="{{ resource.id }}">
-                <td><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"></td>
                 <td class="mono" style="color:var(--text-dim);font-size:11px;">{{ loop.index }}</td>
                 <td>
                     <div class="resource-name">{{ resource.name }}</div>
@@ -656,41 +628,6 @@ DASHBOARD_PAGE = """
 
 <script>
 window.typeColors = {{ type_colors_json|safe }};
-function toggleAll() {
-    var checked = document.getElementById('selectAll').checked;
-    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = checked; });
-    updateBulkBar();
-}
-
-function updateBulkBar() {
-    var checkboxes = document.querySelectorAll('.row-checkbox:checked');
-    var bar = document.getElementById('bulkBar');
-    var count = document.getElementById('bulkCount');
-    count.textContent = checkboxes.length;
-    bar.style.display = checkboxes.length > 0 ? 'flex' : 'none';
-}
-
-function clearSelection() {
-    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = false; });
-    document.getElementById('selectAll').checked = false;
-    updateBulkBar();
-}
-
-function bulkAction(action) {
-    var ids = [];
-    document.querySelectorAll('.row-checkbox:checked').forEach(function(cb) {
-        var row = cb.closest('tr');
-        if (row) ids.push(row.getAttribute('data-id'));
-    });
-    if (!ids.length) return;
-    var msg = action === 'delete' ? 'Delete selected resources?' : (action.charAt(0).toUpperCase() + action.slice(1) + ' selected resources?');
-    if (!confirm(msg)) return;
-    var form = document.getElementById('bulkForm');
-    document.getElementById('bulkActionInput').value = action;
-    document.getElementById('bulkIdsInput').value = ids.join(',');
-    form.submit();
-}
-
 (function() {
     var types = {};
     document.querySelectorAll('#resourceTable tbody tr').forEach(function(row) {
@@ -798,7 +735,6 @@ function startAutoRefresh() {
                 types[r.type] = true;
                 running += r.status === 'running' ? 1 : 0;
                 html += '<tr data-type="' + r.type + '" data-health="' + (r.health || 'unknown') + '" data-id="' + r.id + '">' +
-                    '<td><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"></td>' +
                     '<td class="mono" style="color:var(--text-dim);font-size:11px;">' + (i+1) + '</td>' +
                     '<td><div class="resource-name">' + r.name + '</div><div class="resource-meta">ID: ' + r.id + '</div></td>' +
                     '<td><span class="badge" style="background:' + (window.typeColors[r.type] || '#8892a6') + '15;color:' + (window.typeColors[r.type] || '#8892a6') + ';">' + r.type + '</span></td>' +
@@ -936,14 +872,6 @@ def dashboard():
         subscriptions=subscriptions,
     )
 
-
-ERROR_PAGE = """
-<div class="card">
-    <h1>{{ title }}</h1>
-    <div class="error">{{ message }}</div>
-    <a href="{{ back_url }}" class="btn btn-outline">Go back</a>
-</div>
-"""
 
 
 COST_PAGE = """
