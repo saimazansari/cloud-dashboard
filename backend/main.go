@@ -17,6 +17,7 @@ import (
 
 type Server struct {
 	db *pgxpool.Pool
+	az *AzureManager
 }
 
 func main() {
@@ -33,6 +34,16 @@ func main() {
 	defer pool.Close()
 
 	server := &Server{db: pool}
+
+	if subID := os.Getenv("AZURE_SUBSCRIPTION_ID"); subID != "" {
+		az, err := NewAzureManager(subID)
+		if err != nil {
+			log.Printf("warning: Azure integration not available: %v", err)
+		} else {
+			server.az = az
+			log.Println("Azure integration enabled")
+		}
+	}
 
 	if err := server.migrate(); err != nil {
 		log.Fatalf("database migration failed: %v", err)

@@ -123,6 +123,19 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ListResources(w http.ResponseWriter, r *http.Request) {
 	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
 
+	if s.az != nil {
+		resources, err := s.az.ListResources(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not fetch Azure resources")
+			return
+		}
+		for i := range resources {
+			resources[i].UserID = userID
+		}
+		writeJSON(w, http.StatusOK, resources)
+		return
+	}
+
 	resources, err := s.listResources(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not fetch resources")
@@ -168,7 +181,24 @@ func (s *Server) CreateResource(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetResource(w http.ResponseWriter, r *http.Request) {
 	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
-	resourceID, err := strconv.Atoi(r.PathValue("id"))
+	resourceIDStr := r.PathValue("id")
+
+	if s.az != nil {
+		resource, err := s.az.GetResource(r.Context(), resourceIDStr)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "resource not found")
+			return
+		}
+		resource.UserID = userID
+		result := map[string]interface{}{
+			"resource":    resource,
+			"deployments": []Deployment{},
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+
+	resourceID, err := strconv.Atoi(resourceIDStr)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid resource id")
 		return
@@ -229,6 +259,16 @@ func (s *Server) UpdateResource(w http.ResponseWriter, r *http.Request) {
 func (s *Server) DeleteResource(w http.ResponseWriter, r *http.Request) {
 	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
 
+	if s.az != nil {
+		resourceIDStr := r.PathValue("id")
+		if err := s.az.DeleteResource(r.Context(), resourceIDStr); err != nil {
+			writeError(w, http.StatusNotFound, "resource not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	}
+
 	resourceID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid resource id")
@@ -260,6 +300,30 @@ func (s *Server) BatchAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.az != nil {
+		resources, err := s.az.ListResources(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not list Azure resources")
+			return
+		}
+		idSet := make(map[int]bool)
+		for _, id := range body.IDs {
+			idSet[id] = true
+		}
+		var selected []Resource
+		for _, res := range resources {
+			if idSet[res.ID] {
+				selected = append(selected, res)
+			}
+		}
+		if err := s.az.BatchAction(r.Context(), body.Action, selected); err != nil {
+			writeError(w, http.StatusInternalServerError, "batch action failed on Azure")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+
 	if err := s.batchAction(r.Context(), userID, body.Action, body.IDs); err != nil {
 		writeError(w, http.StatusInternalServerError, "batch action failed")
 		return
@@ -269,6 +333,16 @@ func (s *Server) BatchAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) CostSummary(w http.ResponseWriter, r *http.Request) {
+	if s.az != nil {
+		summary, err := s.az.GetCostSummary(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not generate cost summary")
+			return
+		}
+		writeJSON(w, http.StatusOK, summary)
+		return
+	}
+
 	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
 
 	summary, err := s.getCostSummary(r.Context(), userID)
@@ -303,6 +377,16 @@ func (s *Server) TriggerDeployment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) CostHistory(w http.ResponseWriter, r *http.Request) {
+	if s.az != nil {
+		entries, err := s.az.GetCostHistory(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not fetch cost history")
+			return
+		}
+		writeJSON(w, http.StatusOK, entries)
+		return
+	}
+
 	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
 
 	entries, err := s.getCostHistory(r.Context(), userID)

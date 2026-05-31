@@ -5,7 +5,13 @@ A full-stack web application for managing and visualizing cloud infrastructure r
 ## Architecture
 
 ```
-Browser → Flask Frontend (:5002) → Go API (:8080) → PostgreSQL (:5432)
+                                   ┌──────────────┐
+                                   │   Azure      │
+                                   │ Subscription │
+                                   └──────┬───────┘
+                                          │ Azure SDK
+                                          ▼
+Browser → Flask (:5002) → Go API (:8080) ──┼── PostgreSQL (:5432)
 ```
 
 ## Tech Stack
@@ -13,8 +19,9 @@ Browser → Flask Frontend (:5002) → Go API (:8080) → PostgreSQL (:5432)
 | Component | Technology |
 |-----------|-----------|
 | Frontend | Python + Flask (Jinja2, Chart.js) |
-| Backend API | Go 1.24 (stdlib `net/http`, pgx) |
+| Backend API | Go (stdlib `net/http`, pgx, Azure SDK) |
 | Database | PostgreSQL 16 |
+| Cloud | Azure (Resource Graph, Cost Management, Compute) |
 | Containers | Docker Compose |
 | Orchestration | Kubernetes (manifests included) |
 | Infrastructure | Terraform (AWS) |
@@ -22,11 +29,31 @@ Browser → Flask Frontend (:5002) → Go API (:8080) → PostgreSQL (:5432)
 
 ## Quick Start
 
+### Local (simulated resources — no cloud account needed)
+
 ```bash
 docker compose up --build -d
 ```
 
 Open **http://localhost:5002** and register an account.
+
+### With Azure Integration
+
+Connect the dashboard to your real Azure subscription for live resources, costs, and CRUD operations.
+
+```bash
+# 1. Set your subscription ID
+cp .env.example .env
+# Edit .env with your Azure Subscription ID
+
+# 2. Authenticate with Azure CLI (must be logged in)
+az login
+
+# 3. Start with Azure enabled
+docker compose --env-file .env up --build -d
+```
+
+The dashboard falls back to simulated data when `AZURE_SUBSCRIPTION_ID` is not set.
 
 ## Features
 
@@ -42,6 +69,7 @@ Open **http://localhost:5002** and register an account.
 - **Type filter pills** — One-click filtering by resource type
 - **Bulk actions** — Multi-select checkboxes for batch stop/terminate/delete
 - **Resource detail panel** — Click any row for a slide-out panel with full metadata + deployment history
+- **Azure integration** — Authenticate via Azure CLI, list real resources via Resource Graph, real costs via Cost Management API, stop/delete VMs via Compute SDK
 - **Professional dark theme** — Navy/gunmetal palette with indigo accent (always dark)
 - **CSV export** — Download inventory and cost data
 - **Search/filter** — Real-time table filtering
@@ -80,11 +108,13 @@ Open **http://localhost:5002** and register an account.
 ```
 cloud-dashboard/
 ├── docker-compose.yml         # PostgreSQL + Go + Flask
+├── .env.example               # Azure subscription ID template
 ├── backend/
 │   ├── main.go                # Server setup, routes, CORS, auth middleware
 │   ├── database.go            # PostgreSQL schema, queries, cost logic
 │   ├── handlers.go            # HTTP request handlers
-│   ├── go.mod / go.sum        # Go 1.24 + pgx + bcrypt
+│   ├── azure.go               # Azure SDK integration (Resource Graph, Cost Management, Compute)
+│   ├── go.mod / go.sum        # Go + pgx + bcrypt + Azure SDK
 │   └── Dockerfile
 ├── frontend/
 │   ├── app.py                 # Flask app (all routes, templates, CSV export)
