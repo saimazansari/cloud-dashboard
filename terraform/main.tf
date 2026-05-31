@@ -1,104 +1,134 @@
-provider "aws" {
-  region = var.aws_region
-}
-
-# VPC
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-  tags = { Name = "${var.project_name}-vpc" }
-}
-
-# Subnets
-resource "aws_subnet" "public" {
-  count             = length(var.availability_zones)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index)
-  availability_zone = var.availability_zones[count.index]
-  tags = { Name = "${var.project_name}-public-${count.index}" }
-}
-
-# Internet Gateway
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-  tags   = { Name = "${var.project_name}-igw" }
-}
-
-# Security Group for RDS
-resource "aws_security_group" "rds" {
-  name        = "${var.project_name}-rds-sg"
-  description = "RDS security group"
-  vpc_id      = aws_vpc.main.id
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [aws_vpc.main.cidr_block]
+terraform {
+  required_version = ">= 1.6"
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
   }
-  tags = { Name = "${var.project_name}-rds-sg" }
-}
-
-# RDS PostgreSQL
-resource "aws_db_instance" "postgres" {
-  identifier             = "${var.project_name}-db"
-  engine                 = "postgres"
-  engine_version         = "16.3"
-  instance_class         = var.db_instance_class
-  allocated_storage      = 20
-  db_name                = "clouddashboard"
-  username               = var.db_username
-  password               = var.db_password
-  vpc_security_group_ids = [aws_security_group.rds.id]
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  skip_final_snapshot    = true
-  tags                   = { Name = "${var.project_name}-db" }
-}
-
-resource "aws_db_subnet_group" "main" {
-  name       = "${var.project_name}-db-subnet-group"
-  subnet_ids = aws_subnet.public[*].id
-}
-
-# EKS Cluster
-resource "aws_eks_cluster" "main" {
-  name     = "${var.project_name}-cluster"
-  role_arn = aws_iam_role.eks.arn
-  vpc_config {
-    subnet_ids = aws_subnet.public[*].id
+  backend "azurerm" {
+    resource_group_name  = "tfstate-rg"
+    storage_account_name = "tfstate181199"
+    container_name       = "tfstate"
+    key                  = "cloud-dashboard.tfstate"
   }
-  tags = { Name = "${var.project_name}-eks" }
 }
 
-resource "aws_iam_role" "eks" {
-  name = "${var.project_name}-eks-role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = { Service = "eks.amazonaws.com" }
-      Action = "sts:AssumeRole"
-    }]
-  })
+provider "azurerm" {
+  features {}
+  subscription_id = var.subscription_id
 }
 
-resource "aws_iam_role_policy_attachment" "eks_cluster" {
-  role       = aws_iam_role.eks.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID"
 }
 
-resource "aws_iam_role_policy_attachment" "eks_service" {
-  role       = aws_iam_role.eks.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
+variable "location" {
+  type        = string
+  default     = "eastus"
+  description = "Azure region for resources"
 }
 
-# ECR Repositories
-resource "aws_ecr_repository" "backend" {
-  name = "${var.project_name}-backend"
-  tags = { Name = "${var.project_name}-backend" }
+variable "resource_group_name" {
+  type        = string
+  default     = "cloud-dashboard-demo"
+  description = "Primary resource group name"
 }
 
-resource "aws_ecr_repository" "frontend" {
-  name = "${var.project_name}-frontend"
-  tags = { Name = "${var.project_name}-frontend" }
+resource "azurerm_resource_group" "main" {
+  name     = var.resource_group_name
+  location = var.location
+}
+
+resource "azurerm_virtual_network" "demo" {
+  name                = "demo-vnet"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  address_space       = ["10.0.0.0/16"]
+
+  tags = {
+    environment = "demo"
+    managed_by  = "terraform"
+  }
+}
+
+resource "azurerm_subnet" "default" {
+  name                 = "default"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.demo.name
+  address_prefixes     = ["10.0.0.0/24"]
+}
+
+resource "azurerm_network_security_group" "demo" {
+  name                = "demo-nsg"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  security_rule {
+    name                       = "AllowSSH"
+    priority                   = 1000
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  tags = {
+    environment = "demo"
+    managed_by  = "terraform"
+  }
+}
+
+resource "azurerm_key_vault" "demo" {
+  name                       = "demo-kv-${random_id.suffix.hex}"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+
+  tags = {
+    environment = "demo"
+    managed_by  = "terraform"
+  }
+}
+
+resource "azurerm_storage_account" "demo" {
+  name                     = "demostoragesaima01"
+  location                 = azurerm_resource_group.main.location
+  resource_group_name      = azurerm_resource_group.main.name
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+
+  tags = {
+    environment = "demo"
+    managed_by  = "terraform"
+  }
+}
+
+resource "random_id" "suffix" {
+  byte_length = 3
+}
+
+data "azurerm_client_config" "current" {}
+
+output "resource_group" {
+  value = azurerm_resource_group.main.name
+}
+
+output "vnet_id" {
+  value = azurerm_virtual_network.demo.id
+}
+
+output "key_vault_uri" {
+  value = azurerm_key_vault.demo.vault_uri
+}
+
+output "nsg_id" {
+  value = azurerm_network_security_group.demo.id
 }
