@@ -9,26 +9,6 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
 
-COST_PER_HOUR_BY_TYPE = {
-    "Virtual Machine": 0.0860,
-    "Storage Account": 0.0180,
-    "Load Balancer": 0.0250,
-    "Database": 0.0150,
-    "Kubernetes Cluster": 0.1000,
-    "Serverless Function": 0.0000,
-    "CDN Profile": 0.0100,
-}
-
-RESOURCE_TYPE_ICONS = {
-    "Virtual Machine": "🖥️",
-    "Kubernetes Cluster": "⎈",
-    "Load Balancer": "⚖️",
-    "Storage Account": "💾",
-    "Database": "🗄️",
-    "CDN Profile": "🌐",
-    "Serverless Function": "⚡",
-}
-
 RESOURCE_COLORS = {
     "Virtual Machine": "#7c6ff7",
     "Kubernetes Cluster": "#38bdf8",
@@ -54,21 +34,6 @@ def type_color(rtype):
     h = hash(rtype) & 0xFFFFFF
     return "#" + format(h % 0xCCCCCC + 0x333333, "06x")
 
-RESOURCE_TYPES = [
-    "Virtual Machine", "Storage Account", "Load Balancer",
-    "Database", "Kubernetes Cluster", "Serverless Function", "CDN Profile",
-]
-
-REGIONS = [
-    ("us-east-1", "US East (N. Virginia)"),
-    ("us-west-2", "US West (Oregon)"),
-    ("eu-west-1", "EU (Ireland)"),
-    ("ap-southeast-1", "Asia Pacific (Singapore)"),
-]
-
-STATUSES = ["running", "stopped", "terminated"]
-
-DEFAULT_BUDGET = 200
 HOURS_PER_MONTH = 730
 
 LAYOUT = """
@@ -111,61 +76,57 @@ LAYOUT = """
             background-image: radial-gradient(circle at 50% 0%, rgba(124,111,247,0.03) 0%, transparent 60%),
                               repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.015) 39px, rgba(255,255,255,0.015) 40px);
         }
-        .layout { display:flex; min-height:100vh; }
-        .sidebar {
-            width:220px; background:var(--sidebar-bg);
-            border-right:1px solid var(--card-border);
-            display:flex; flex-direction:column; position:fixed;
-            top:0; left:0; bottom:0; z-index:10;
-            background-image: linear-gradient(180deg, rgba(124,111,247,0.03) 0%, transparent 120px);
-        }
-        .sidebar-brand {
-            padding:20px 18px 16px; font-weight:700; font-size:15px;
-            letter-spacing:-0.3px; color:var(--primary);
+        .layout { display:flex; flex-direction:column; min-height:100vh; }
+        .navbar {
+            display:flex; align-items:center; gap:8px;
+            padding:0 20px; height:48px;
+            background:var(--sidebar-bg);
             border-bottom:1px solid var(--card-border);
+            position:sticky; top:0; z-index:50;
+            background-image: linear-gradient(90deg, rgba(124,111,247,0.03) 0%, transparent 120px);
+        }
+        .navbar-brand {
             display:flex; align-items:center; gap:8px;
-            position:relative;
+            font-weight:700; font-size:15px; color:var(--primary);
+            margin-right:24px; flex-shrink:0;
         }
-        .sidebar-brand::after {
-            content:''; position:absolute; bottom:-1px; left:18px; right:18px;
-            height:1px; background:linear-gradient(90deg, var(--primary), transparent);
+        .navbar-brand svg { flex-shrink:0; }
+        .navbar-nav { display:flex; align-items:center; gap:2px; flex:1; }
+        .navbar-nav a {
+            display:flex; align-items:center; gap:6px; padding:6px 14px;
+            border-radius:6px; font-size:13px; color:var(--text-muted);
+            text-decoration:none; font-weight:500; transition:all .15s;
+            white-space:nowrap;
         }
-        .sidebar-nav { flex:1; padding:12px 8px; display:flex; flex-direction:column; gap:2px; }
-        .sidebar-nav a {
-            display:flex; align-items:center; gap:10px; padding:9px 12px;
-            border-radius:6px; font-size:14px; color:var(--text-muted);
-            text-decoration:none; transition:all .15s; font-weight:500; position:relative;
-        }
-        .sidebar-nav a:hover { background:rgba(255,255,255,0.03); color:var(--text); }
-        .sidebar-nav a.active {
+        .navbar-nav a:hover { background:rgba(255,255,255,0.03); color:var(--text); }
+        .navbar-nav a.active {
             background:var(--primary-glow); color:var(--primary);
-            box-shadow:inset 2px 0 0 var(--primary);
         }
-        .sidebar-nav a .nav-icon { width:18px; text-align:center; font-size:15px; }
-        .sidebar-footer { padding:12px 8px; border-top:1px solid var(--card-border); }
-        .sidebar-footer .user-info {
+        .navbar-right { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+        .navbar-user {
             display:flex; align-items:center; gap:8px;
-            padding:8px 12px; border-radius:6px; font-size:13px; color:var(--text-muted);
+            font-size:13px; color:var(--text-muted);
         }
-        .sidebar-footer .user-info .avatar {
+        .navbar-user .avatar {
             width:26px; height:26px; border-radius:6px;
             background:linear-gradient(135deg, var(--primary), #a78bfa);
             color:#fff; display:flex; align-items:center; justify-content:center;
             font-size:11px; font-weight:700;
         }
-        .sidebar-footer a {
-            display:flex; align-items:center; gap:8px; padding:8px 12px;
-            border-radius:6px; font-size:13px; color:var(--danger);
-            text-decoration:none; margin-top:2px;
+        .navbar-logout {
+            display:flex; align-items:center; gap:6px; padding:5px 10px;
+            border-radius:6px; font-size:12px; color:var(--danger);
+            text-decoration:none; transition:background .15s;
         }
-        .sidebar-footer a:hover { background:var(--danger-bg); }
-        .main { margin-left:220px; flex:1; min-height:100vh; }
-        .content { padding:24px 28px; }
+        .navbar-logout:hover { background:var(--danger-bg); }
+        .main { flex:1; }
+        .content { padding:16px 20px; }
+        .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .auth-wrap { max-width:420px; margin:80px auto; padding:0 16px; }
         .card {
             background:var(--card-bg);
             border:1px solid var(--card-border);
-            border-radius:10px; padding:24px; margin-bottom:20px;
+            border-radius:10px; padding:18px; margin-bottom:16px;
             position:relative;
         }
         .card::before {
@@ -175,16 +136,16 @@ LAYOUT = """
             opacity:0; transition:opacity .25s;
         }
         .card:hover::before { opacity:1; }
-        h1 { font-size:22px; font-weight:600; margin-bottom:16px; letter-spacing:-0.3px; }
+        h1 { font-size:20px; font-weight:600; margin-bottom:12px; letter-spacing:-0.3px; }
         h2 { font-size:15px; font-weight:600; color:var(--text-muted); margin-bottom:14px; letter-spacing:0.3px; text-transform:uppercase; }
         table { width:100%; border-collapse:separate; border-spacing:0; }
         th {
-            padding:10px 14px; text-align:left; font-size:11px; font-weight:600;
+            padding:8px 10px; text-align:left; font-size:10px; font-weight:600;
             color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px;
             border-bottom:1px solid var(--card-border); background:transparent;
             position:sticky; top:0; z-index:2;
         }
-        td { padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:13px; }
+        td { padding:10px 10px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12px; }
         tbody tr { transition:background .12s; }
         tbody tr:hover { background:rgba(124,111,247,0.035); }
         tbody tr:last-child td { border-bottom:none; }
@@ -203,9 +164,9 @@ LAYOUT = """
         .btn-ghost { background:transparent; color:var(--text-dim); padding:5px 8px; border-radius:4px; font-size:13px; }
         .btn-ghost:hover { background:rgba(255,255,255,0.04); color:var(--text); }
         .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-        .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+        .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
         .stat-card {
-            padding:18px 20px; border-radius:10px;
+            padding:14px 16px; border-radius:10px;
             border:1px solid var(--card-border); background:var(--card-bg);
             position:relative; overflow:hidden;
             transition:border-color .2s, box-shadow .2s;
@@ -213,7 +174,7 @@ LAYOUT = """
         .stat-card:hover { border-color:rgba(124,111,247,0.15); box-shadow:0 0 20px rgba(124,111,247,0.05); }
         .stat-card .stat-icon { font-size:20px; margin-bottom:8px; opacity:0.7; }
         .stat-value {
-            font-size:26px; font-weight:700; letter-spacing:-0.5px;
+            font-size:22px; font-weight:700; letter-spacing:-0.5px;
             font-family:var(--font-mono); line-height:1.2;
         }
         .stat-label {
@@ -236,9 +197,6 @@ LAYOUT = """
         .stat-card.g2::after { background:#4ade80; }
         .stat-card.g3::after { background:#fbbf24; }
         .stat-card.g4::after { background:#38bdf8; }
-        .chart-row { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-        .chart-box { text-align:center; padding:8px 0; }
-        .chart-box canvas { max-height:220px; margin:0 auto; }
         .chart-wrap { max-width:360px; margin:0 auto; }
         .badge {
             display:inline-flex; align-items:center; gap:4px;
@@ -272,18 +230,6 @@ LAYOUT = """
             background-repeat:no-repeat; background-position:right 10px center; padding-right:28px;
         }
         .type-filter select:focus { border-color:var(--primary); }
-        .progress-bar { height:4px; background:rgba(255,255,255,0.04); border-radius:4px; overflow:hidden; margin-top:8px; }
-        .progress-bar .fill { height:100%; border-radius:4px; transition:width .5s ease; }
-        .progress-bar .fill.safe { background:linear-gradient(90deg, #4ade80, #22d3ee); }
-        .progress-bar .fill.warn { background:linear-gradient(90deg, #fbbf24, #fb923c); }
-        .progress-bar .fill.danger { background:linear-gradient(90deg, #f87171, #f43f5e); }
-        .budget-input {
-            background:transparent; border:1px solid var(--card-border);
-            color:var(--text); padding:4px 8px; border-radius:4px;
-            font-size:12px; font-family:var(--font-mono); width:80px;
-            text-align:center; outline:none;
-        }
-        .budget-input:focus { border-color:var(--primary); }
         .filter-input {
             padding:7px 12px; border:1px solid var(--input-border);
             border-radius:6px; font-size:13px; background:var(--input-bg);
@@ -361,22 +307,20 @@ LAYOUT = """
         .sys-stat { display:flex; align-items:center; gap:5px; color:var(--text-dim); }
         .sys-dot { width:5px; height:5px; border-radius:50%; }
         .sys-mono { font-family:var(--font-mono); color:var(--text-dim); font-size:11px; }
+        .sub-select { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:var(--text); font-size:11px; padding:3px 8px; border-radius:4px; cursor:pointer; max-width:180px; }
+        .sub-select option { background:#1a1d2e; color:var(--text); }
         tbody tr:nth-child(even) { background:rgba(255,255,255,0.012); }
         ::-webkit-scrollbar { width:6px; height:6px; }
         ::-webkit-scrollbar-track { background:transparent; }
         ::-webkit-scrollbar-thumb { background:var(--text-dim); border-radius:3px; }
         ::-webkit-scrollbar-thumb:hover { background:var(--text-muted); }
-        @media (max-width:900px) {
-            .sidebar { width:56px; }
-            .sidebar-brand span, .sidebar-nav a span, .sidebar-footer .user-info span, .sidebar-footer a span { display:none; }
-            .sidebar-nav a { justify-content:center; padding:9px; }
-            .sidebar-footer .user-info { justify-content:center; }
-            .main { margin-left:56px; }
-            .grid-4 { grid-template-columns:repeat(2,1fr); }
-            .chart-row { grid-template-columns:1fr; }
-        }
         @media (max-width:600px) {
-            .content { padding:16px; }
+            .navbar-nav a span:last-child { display:none; }
+            .navbar-user span { display:none; }
+            .content { padding:12px; }
+            .grid-4 { grid-template-columns:repeat(2,1fr); }
+        }
+        @media (max-width:400px) {
             .grid-4 { grid-template-columns:1fr; }
         }
     </style>
@@ -384,33 +328,30 @@ LAYOUT = """
 <body>
 {% if session.get('user_id') %}
 <div class="layout">
-    <aside class="sidebar">
-        <div class="sidebar-brand">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             <span>CloudDash</span>
         </div>
-        <nav class="sidebar-nav">
-            <a href="/"
-               class="{{ 'active' if request.path == '/' else '' }}">
-                <span class="nav-icon">⎔</span><span>Resources</span>
+        <div class="navbar-nav">
+            <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
+                <span>⎔</span><span>Resources</span>
             </a>
-            <a href="/cost-summary"
-               class="{{ 'active' if request.path == '/cost-summary' else '' }}">
-                <span class="nav-icon">$</span><span>Costs</span>
+            <a href="/cost-summary" class="{{ 'active' if request.path == '/cost-summary' else '' }}">
+                <span>$</span><span>Costs</span>
             </a>
-            <a href="/deployments"
-               class="{{ 'active' if request.path == '/deployments' else '' }}">
-                <span class="nav-icon">⇪</span><span>Deployments</span>
+            <a href="/deployments" class="{{ 'active' if request.path == '/deployments' else '' }}">
+                <span>⇪</span><span>Deployments</span>
             </a>
-        </nav>
-        <div class="sidebar-footer">
-            <div class="user-info">
+        </div>
+        <div class="navbar-right">
+            <div class="navbar-user">
                 <div class="avatar">{{ session.get('username','U')[:1].upper() }}</div>
                 <span>{{ session.get('username') }}</span>
             </div>
-            <a href="/logout"><span>⏻</span> <span>Logout</span></a>
+            <a href="/logout" class="navbar-logout">⏻ Logout</a>
         </div>
-    </aside>
+    </nav>
     <main class="main">
         <div class="content">
             {% block content %}{% endblock %}
@@ -451,7 +392,11 @@ function renderAges() {
         el.textContent = timeAgo(el.getAttribute('data-age'));
     });
 }
-document.addEventListener('DOMContentLoaded', renderAges);
+document.addEventListener('DOMContentLoaded', function() {
+    renderAges();
+    animateCounters();
+    updateRefreshTime();
+});
 
 function animateCounters() {
     document.querySelectorAll('.countup').forEach(function(el) {
@@ -496,62 +441,25 @@ document.addEventListener('DOMContentLoaded', function() {
 """
 
 
-def api_get(path):
+def api_request(method, path, data=None):
     headers = {}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
     if session.get("user_id") and session.get("token"):
         headers["X-User-ID"] = str(session["user_id"])
         headers["X-Auth-Token"] = session["token"]
     try:
-        response = requests.get(f"{BACKEND_URL}{path}", headers=headers, timeout=5)
-        if response.status_code < 500:
-            return response.json()
-        return {"error": "server error"}
-    except requests.exceptions.ConnectionError:
-        return {"error": "Could not connect to backend"}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def api_post(path, data):
-    headers = {"Content-Type": "application/json"}
-    if session.get("user_id") and session.get("token"):
-        headers["X-User-ID"] = str(session["user_id"])
-        headers["X-Auth-Token"] = session["token"]
-    try:
-        response = requests.post(f"{BACKEND_URL}{path}", json=data, headers=headers, timeout=5)
+        response = requests.request(method, f"{BACKEND_URL}{path}", json=data, headers=headers, timeout=5)
+        if method == "GET":
+            return response.json() if response.status_code < 500 else {"error": "server error"}
         return response.json(), response.status_code
     except requests.exceptions.ConnectionError:
-        return {"error": "Could not connect to backend"}, 503
+        return {"error": "Could not connect to backend"} if method == "GET" else ({"error": "Could not connect to backend"}, 503)
     except Exception as e:
-        return {"error": str(e)}, 500
+        return {"error": str(e)} if method == "GET" else ({"error": str(e)}, 500)
 
-
-def api_put(path, data):
-    headers = {"Content-Type": "application/json"}
-    if session.get("user_id") and session.get("token"):
-        headers["X-User-ID"] = str(session["user_id"])
-        headers["X-Auth-Token"] = session["token"]
-    try:
-        response = requests.put(f"{BACKEND_URL}{path}", json=data, headers=headers, timeout=5)
-        return response.json(), response.status_code
-    except requests.exceptions.ConnectionError:
-        return {"error": "Could not connect to backend"}, 503
-    except Exception as e:
-        return {"error": str(e)}, 500
-
-
-def api_delete(path):
-    headers = {}
-    if session.get("user_id") and session.get("token"):
-        headers["X-User-ID"] = str(session["user_id"])
-        headers["X-Auth-Token"] = session["token"]
-    try:
-        response = requests.delete(f"{BACKEND_URL}{path}", headers=headers, timeout=5)
-        return response.json(), response.status_code
-    except requests.exceptions.ConnectionError:
-        return {"error": "Could not connect to backend"}, 503
-    except Exception as e:
-        return {"error": str(e)}, 500
+api_get = lambda p: api_request("GET", p)
+api_post = lambda p, d: api_request("POST", p, d)
 
 
 def render_page(content, **context):
@@ -584,86 +492,6 @@ def status_badge_class(status):
     return "danger"
 
 
-def resource_form_html(method, action, values=None, error=None):
-    name = values.get("name", "") if values else ""
-    resource_type = values.get("type", "") if values else ""
-    region = values.get("region", "us-east-1") if values else "us-east-1"
-    status = values.get("status", "running") if values else "running"
-
-    tags_text = ""
-    if values and values.get("tags"):
-        if isinstance(values["tags"], dict):
-            tags_text = "\n".join(f"{k}:{v}" for k, v in values["tags"].items())
-        else:
-            tags_text = values["tags"]
-
-    is_edit = method == "PUT"
-    title = "Edit Resource" if is_edit else "Add Cloud Resource"
-    submit_label = "Update Resource" if is_edit else "Create Resource"
-
-    type_options = "".join(
-        f'<option value="{t}"{" selected" if t == resource_type else ""}>{t}</option>'
-        for t in RESOURCE_TYPES
-    )
-    region_options = "".join(
-        f'<option value="{v}"{" selected" if v == region else ""}>{l}</option>'
-        for v, l in REGIONS
-    )
-    status_options = "".join(
-        f'<option value="{s}"{" selected" if s == status else ""}>{s}</option>'
-        for s in STATUSES
-    )
-
-    error_html = f'<div class="error">{error}</div>' if error else ""
-
-    return f"""<div class="card">
-  <h1>{title}</h1>
-  <p class="meta">Tags format: one per line as key:value</p>
-  {error_html}
-  <form method="post">
-    <div class="form-group">
-      <label>Name</label>
-      <input type="text" name="name" value="{name}" required>
-    </div>
-    <div class="form-group">
-      <label>Type</label>
-      <select name="type" required>{type_options}</select>
-    </div>
-    <div class="form-group">
-      <label>Region</label>
-      <select name="region">{region_options}</select>
-    </div>
-    <div class="form-group">
-      <label>Status</label>
-      <select name="status">{status_options}</select>
-    </div>
-    <div class="form-group">
-      <label>Tags (key:value per line)</label>
-      <textarea name="tags" rows="4">{tags_text}</textarea>
-    </div>
-    <button type="submit" class="btn btn-primary">{submit_label}</button>
-    <a href="/" class="btn btn-outline">Cancel</a>
-  </form>
-</div>"""
-
-
-def parse_tags(form):
-    tags = {}
-    for line in form.get("tags", "").strip().splitlines():
-        if ":" in line:
-            key, value = line.split(":", 1)
-            tags[key.strip()] = value.strip()
-    return tags
-
-
-def cost_percentage(pct):
-    if pct < 70:
-        return "safe"
-    elif pct < 90:
-        return "warn"
-    return "danger"
-
-
 DASHBOARD_PAGE = """
 <div class="sys-bar">
     <div class="sys-bar-left">
@@ -671,8 +499,15 @@ DASHBOARD_PAGE = """
         <span class="sys-text">All systems operational</span>
     </div>
     <div class="sys-bar-right">
-        <span class="sys-stat"><span class="sys-dot" style="background:var(--success)"></span> {{ resources|length }} resources</span>
-        <span class="sys-stat"><span class="sys-dot" style="background:var(--primary)"></span> {{ stats.running }} running</span>
+        <span class="sys-stat"><span class="sys-dot" style="background:var(--success)"></span> <span id="statResources">{{ resources|length }}</span> resources</span>
+        <span class="sys-stat"><span class="sys-dot" style="background:var(--primary)"></span> <span id="statRunning">{{ stats.running }}</span> running</span>
+        {% if subscriptions %}
+        <select id="subSelector" class="sub-select" onchange="switchSubscription(this.value)">
+            {% for sub in subscriptions %}
+            <option value="{{ sub.id }}"{% if sub.is_current %} selected{% endif %}>{{ sub.display_name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <span id="refreshTime" class="sys-mono">just now</span>
     </div>
 </div>
@@ -702,29 +537,6 @@ DASHBOARD_PAGE = """
     </div>
 </div>
 
-{% if budget %}
-<div class="card" style="padding:16px 20px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div>
-            <span style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.3px;">Budget Utilization</span>
-            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">
-                ${{ "%.0f"|format(stats.monthly_cost) }} of ${{ "%.0f"|format(budget) }} used
-            </div>
-        </div>
-        <div style="text-align:right;">
-            <span style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:{% if budget_pct < 70 %}var(--success){% elif budget_pct < 90 %}var(--warning){% else %}var(--danger){% endif %};">{{ budget_pct }}%</span>
-            <form method="post" action="/set-budget" style="display:inline-flex;align-items:center;gap:4px;margin-left:12px;">
-                <span style="font-size:11px;color:var(--text-dim);">$</span>
-                <input class="budget-input" type="number" name="budget" value="{{ "%.0f"|format(budget) }}" min="1" step="10">
-                <button class="btn-ghost" style="font-size:11px;">Set</button>
-            </form>
-        </div>
-    </div>
-    <div class="progress-bar">
-        <div class="fill {{ cost_level }}" style="width:{{ budget_pct }}%;"></div>
-    </div>
-</div>
-{% endif %}
 
 <div class="card">
     <div class="section-header">
@@ -737,7 +549,6 @@ DASHBOARD_PAGE = """
             <input class="filter-input" id="filterInput"
                    placeholder="Search resources..."
                    oninput="filterTable('filterInput','resourceTable')">
-            <a href="/resources/add" class="btn btn-primary">+ Add Resource</a>
             <a href="/export/csv/resources" class="btn btn-outline">CSV</a>
         </div>
     </div>
@@ -757,7 +568,7 @@ DASHBOARD_PAGE = """
         <input type="hidden" name="ids" id="bulkIdsInput">
     </form>
     <div class="type-filter"><select id="typeFilter" onchange="filterByType(this.value)"><option value="">All Types</option></select></div>
-    <table id="resourceTable">
+    <div class="table-scroll"><table id="resourceTable">
         <thead>
             <tr>
                 <th style="width:32px;"><input type="checkbox" id="selectAll" onchange="toggleAll()"></th>
@@ -770,7 +581,6 @@ DASHBOARD_PAGE = """
                 <th>Health</th>
                 <th>Status</th>
                 <th>Age</th>
-                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -779,14 +589,18 @@ DASHBOARD_PAGE = """
                 <td><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"></td>
                 <td class="mono" style="color:var(--text-dim);font-size:11px;">{{ loop.index }}</td>
                 <td>
-                    <div class="resource-name">{{ resource.type_icon }} {{ resource.name }}</div>
+                    <div class="resource-name">{{ resource.name }}</div>
                     <div class="resource-meta">ID: {{ resource.id }}</div>
                 </td>
                 <td><span class="badge" style="background:{{ resource.type_color }}15;color:{{ resource.type_color }};">{{ resource.type }}</span></td>
                 <td class="mono">{{ resource.region }}</td>
                 <td class="mono" style="text-align:right;">
+                    {% if resource.cost_per_hour == 0 %}
+                    <span class="badge badge-neutral" style="font-size:11px;">Free</span>
+                    {% else %}
                     <div>${{ "%.2f"|format(resource.cost_per_hour * 730) }}/mo</div>
                     <div style="font-size:10px;color:var(--text-dim);">${{ "%.4f"|format(resource.cost_per_hour) }}/hr</div>
+                    {% endif %}
                 </td>
                 <td>{{ resource.tags_html|safe }}</td>
                 <td>
@@ -797,24 +611,15 @@ DASHBOARD_PAGE = """
                     <span class="badge badge-{{ resource.status_class }}">{{ resource.status }}</span>
                 </td>
                 <td><span class="age" data-age="{{ resource.created_at }}">{{ resource.created_at[:10] if resource.created_at else '--' }}</span></td>
-                <td class="actions">
-                    <a href="/resources/{{ resource.id }}/edit" class="btn-ghost" title="Edit">&#9998;</a>
-                    <form class="inline-form" method="post"
-                          action="/resources/{{ resource.id }}/delete"
-                          onsubmit="return confirm('Delete this resource?')">
-                        <button class="btn-ghost" title="Delete" style="color:var(--danger)">&#10005;</button>
-                    </form>
-                </td>
             </tr>
             {% endfor %}
         </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty">
         <div style="font-size:40px;margin-bottom:12px;">⎔</div>
         <div>No infrastructure resources yet.</div>
         <div style="margin-top:16px;">
-            <a href="/resources/add" class="btn btn-primary">+ Add Your First Resource</a>
         </div>
     </div>
     {% endif %}
@@ -931,9 +736,13 @@ function openPanel(id) {
                 '<div class="panel-section">' +
                     '<div class="prop-row"><span class="prop-label">Type</span><span class="badge" style="background:' + (window.typeColors[r.type] || '#8892a6') + '18;color:' + (window.typeColors[r.type] || '#8892a6') + ';">' + r.type + '</span></div>' +
                     '<div class="prop-row"><span class="prop-label">Region</span><span class="prop-value">' + r.region + '</span></div>' +
+                    (r.resource_group ? '<div class="prop-row"><span class="prop-label">Resource Group</span><span class="prop-value mono">' + r.resource_group + '</span></div>' : '') +
+                    (r.subscription_id ? '<div class="prop-row"><span class="prop-label">Subscription</span><span class="prop-value mono" style="font-size:11px;">' + r.subscription_id + '</span></div>' : '') +
+                    (r.sku ? '<div class="prop-row"><span class="prop-label">SKU</span><span class="prop-value mono">' + r.sku + '</span></div>' : '') +
                     '<div class="prop-row"><span class="prop-label">Status</span><span class="badge badge-' + (r.status === 'running' ? 'success' : (r.status === 'stopped' ? 'warning' : 'danger')) + '">' + r.status + '</span></div>' +
+                    (r.cost_per_hour === 0 ? '<div class="prop-row"><span class="prop-label">Cost</span><span class="badge badge-neutral">Free</span></div>' :
                     '<div class="prop-row"><span class="prop-label">Cost/hr</span><span class="prop-value">$' + r.cost_per_hour.toFixed(4) + '</span></div>' +
-                    '<div class="prop-row"><span class="prop-label">Cost/mo</span><span class="prop-value">$' + (r.cost_per_hour * 730).toFixed(2) + '</span></div>' +
+                    '<div class="prop-row"><span class="prop-label">Cost/mo</span><span class="prop-value">$' + (r.cost_per_hour * 730).toFixed(2) + '</span></div>') +
                     (tags ? '<div class="prop-row"><span class="prop-label">Tags</span><span class="prop-value" style="font-family:var(--font-sans);">' + tags + '</span></div>' : '') +
                     '<div class="prop-row"><span class="prop-label">Created</span><span class="prop-value">' + (r.created_at ? r.created_at.slice(0,10) : '--') + '</span></div>' +
                     '<div class="prop-row"><span class="prop-label">Updated</span><span class="prop-value">' + (r.updated_at ? r.updated_at.slice(0,10) : '--') + '</span></div>' +
@@ -958,7 +767,75 @@ document.addEventListener('DOMContentLoaded', function() {
             if (id) openPanel(parseInt(id));
         });
     });
+    startAutoRefresh();
 });
+
+function switchSubscription(id) {
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/set-subscription';
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'subscription_id';
+    input.value = id;
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function startAutoRefresh() {
+    setInterval(function() {
+        fetch('/api/resources').then(function(r) { return r.json(); }).then(function(data) {
+            if (!Array.isArray(data)) return;
+            var tbody = document.querySelector('#resourceTable tbody');
+            if (!tbody) return;
+            var typeSelect = document.getElementById('typeFilter');
+            var selectedType = typeSelect ? typeSelect.value : '';
+            var types = {};
+            var html = '';
+            var running = 0;
+            data.forEach(function(r, i) {
+                types[r.type] = true;
+                running += r.status === 'running' ? 1 : 0;
+                html += '<tr data-type="' + r.type + '" data-health="' + (r.health || 'unknown') + '" data-id="' + r.id + '">' +
+                    '<td><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"></td>' +
+                    '<td class="mono" style="color:var(--text-dim);font-size:11px;">' + (i+1) + '</td>' +
+                    '<td><div class="resource-name">' + r.name + '</div><div class="resource-meta">ID: ' + r.id + '</div></td>' +
+                    '<td><span class="badge" style="background:' + (window.typeColors[r.type] || '#8892a6') + '15;color:' + (window.typeColors[r.type] || '#8892a6') + ';">' + r.type + '</span></td>' +
+                    '<td class="mono">' + (r.region || '') + '</td>' +
+                    '<td class="mono" style="text-align:right;">' + (r.cost_per_hour === 0 ? '<span class="badge badge-neutral" style="font-size:11px;">Free</span>' : '<div>$' + (r.cost_per_hour * 730).toFixed(2) + '/mo</div><div style="font-size:10px;color:var(--text-dim);">$' + r.cost_per_hour.toFixed(4) + '/hr</div>') + '</td>' +
+                    '<td>' + (r.tags ? Object.keys(r.tags).map(function(k) { return '<span class="tag">' + k + ':' + r.tags[k] + '</span>'; }).join(' ') : '') + '</td>' +
+                    '<td><span class="status-dot ' + (r.health || 'unknown') + '"></span><span class="badge badge-' + ((r.health === 'healthy' || r.health === 'running') ? 'success' : (r.health === 'degraded' || r.health === 'stopped' ? 'warning' : 'danger')) + '">' + (r.health || r.status) + '</span></td>' +
+                    '<td><span class="badge badge-' + (r.status === 'running' ? 'success' : (r.status === 'stopped' ? 'warning' : 'danger')) + '">' + r.status + '</span></td>' +
+                    '<td><span class="age" data-age="' + (r.created_at || '') + '">' + (r.created_at ? r.created_at.slice(0,10) : '--') + '</span></td></tr>';
+            });
+            tbody.innerHTML = html;
+            document.getElementById('statResources').textContent = data.length;
+            document.getElementById('statRunning').textContent = running;
+            renderAges();
+            if (typeSelect) {
+                var cur = typeSelect.value;
+                typeSelect.innerHTML = '<option value="">All Types</option>';
+                Object.keys(types).sort().forEach(function(t) {
+                    typeSelect.innerHTML += '<option value="' + t + '">' + t + '</option>';
+                });
+                typeSelect.value = cur;
+                filterByType(selectedType);
+            }
+            var el = document.getElementById('refreshTime');
+            if (el) el.textContent = '0s ago';
+        });
+        fetch('/api/cost-summary').then(function(r) { return r.json(); }).then(function(c) {
+            if (c && c.total_monthly) {
+                var el = document.querySelector('.stat-card.g3 .stat-value');
+                if (el) {
+                    el.setAttribute('data-target', c.total_monthly.toFixed(0));
+                    el.textContent = '$' + c.total_monthly.toFixed(0);
+                }
+            }
+        });
+    }, 30000);
+}
 </script>
 
 <div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
@@ -981,7 +858,6 @@ def dashboard():
     if isinstance(data, list):
         for resource in data:
             resource["tags_html"] = format_tags(resource.get("tags"))
-            resource["type_icon"] = RESOURCE_TYPE_ICONS.get(resource["type"], "⎔")
             resource["health"] = derive_health(resource["status"])
             resource["health_class"] = status_badge_class(resource["health"])
             resource["status_class"] = status_badge_class(resource["status"])
@@ -1000,16 +876,8 @@ def dashboard():
         "deployments": 0,
     }
     health = {"healthy": 0, "degraded": 0, "offline": 0}
-    type_labels = "[]"
-    type_counts = "[]"
-    status_labels = "[]"
-    status_counts = "[]"
     type_colors_json = "{}"
     recent_deploys = []
-
-    budget = session.get("budget", DEFAULT_BUDGET)
-    budget_pct = 0
-    has_charts = False
 
     if resources:
         groups = {}
@@ -1035,13 +903,20 @@ def dashboard():
         stats["hourly_cost"] = round(hourly_total, 4)
         stats["monthly_cost"] = round(hourly_total * HOURS_PER_MONTH, 2)
 
-        budget_pct = min(100, round(stats["monthly_cost"] / budget * 100, 1))
-        type_labels = json.dumps(list(groups.keys()))
-        type_counts = json.dumps(list(groups.values()))
-        status_labels = json.dumps(list(status_groups.keys()))
-        status_counts = json.dumps(list(status_groups.values()))
         type_colors_json = json.dumps({t: type_color(t) for t in groups.keys()})
-        has_charts = True
+
+    cost_data = api_get("/api/cost-summary")
+    if isinstance(cost_data, dict) and "error" not in cost_data and cost_data.get("total_monthly"):
+        stats["monthly_cost"] = round(cost_data["total_monthly"], 2)
+        stats["hourly_cost"] = round(cost_data["total_hourly"], 4)
+
+    sub_data = api_get("/api/subscriptions")
+    subscriptions = sub_data if isinstance(sub_data, list) else []
+
+    if not session.get("subscription_id") and subscriptions:
+        current = next((s for s in subscriptions if s.get("is_current")), None)
+        if current:
+            session["subscription_id"] = current["id"]
 
     deploy_data = api_get("/api/deployments")
     if isinstance(deploy_data, list):
@@ -1056,61 +931,11 @@ def dashboard():
         error=error,
         stats=stats,
         health=health,
-        budget=budget,
-        budget_pct=budget_pct,
-        cost_level=cost_percentage(budget_pct),
-        has_charts=has_charts,
-        type_labels=type_labels,
-        type_counts=type_counts,
         type_colors_json=type_colors_json,
-        status_labels=status_labels,
-        status_counts=status_counts,
         recent_deploys=recent_deploys,
+        subscriptions=subscriptions,
     )
 
-
-ADD_RESOURCE_PAGE = """
-<div class="card">
-    <h1>Add Cloud Resource</h1>
-    <p class="meta">Tags format: one per line as key:value</p>
-    <form method="post">
-        <div class="form-group">
-            <label>Name</label>
-            <input type="text" name="name" required>
-        </div>
-        <div class="form-group">
-            <label>Type</label>
-            <select name="type" required>
-                {% for t in resource_types %}
-                <option value="{{ t }}">{{ t }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Region</label>
-            <select name="region">
-                {% for value, label in regions %}
-                <option value="{{ value }}">{{ label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Status</label>
-            <select name="status">
-                {% for s in statuses %}
-                <option value="{{ s }}">{{ s }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Tags (key:value per line)</label>
-            <textarea name="tags" rows="4"></textarea>
-        </div>
-        <button type="submit" class="btn btn-primary">Create Resource</button>
-        <a href="/" class="btn btn-outline">Cancel</a>
-    </form>
-</div>
-"""
 
 ERROR_PAGE = """
 <div class="card">
@@ -1121,99 +946,7 @@ ERROR_PAGE = """
 """
 
 
-@app.route("/resources/add", methods=["GET", "POST"])
-def add_resource():
-    if not session.get("user_id"):
-        return redirect("/login")
-
-    if request.method == "POST":
-        payload = {
-            "name": request.form["name"],
-            "type": request.form["type"],
-            "region": request.form.get("region", "us-east-1"),
-            "status": request.form.get("status", "running"),
-        }
-        tags = parse_tags(request.form)
-        if tags:
-            payload["tags"] = tags
-
-        result, status_code = api_post("/api/resources", payload)
-        if status_code in (200, 201):
-            return redirect("/")
-        return render_page(
-            ERROR_PAGE,
-            title="Error",
-            message=result.get("error", "Failed to create resource"),
-            back_url="/resources/add",
-        )
-
-    return render_page(
-        ADD_RESOURCE_PAGE,
-        resource_types=RESOURCE_TYPES,
-        regions=REGIONS,
-        statuses=STATUSES,
-    )
-
-
-@app.route("/resources/<int:resource_id>/edit", methods=["GET", "POST"])
-def edit_resource(resource_id):
-    if not session.get("user_id"):
-        return redirect("/login")
-
-    if request.method == "POST":
-        payload = {
-            "name": request.form["name"],
-            "type": request.form["type"],
-            "region": request.form.get("region", "us-east-1"),
-            "status": request.form.get("status", "running"),
-        }
-        tags = parse_tags(request.form)
-        if tags:
-            payload["tags"] = tags
-
-        result, status_code = api_put(f"/api/resources/{resource_id}", payload)
-        if status_code in (200, 201):
-            return redirect("/")
-        return render_page(
-            ERROR_PAGE,
-            title="Error",
-            message=result.get("error", "Failed to update resource"),
-            back_url=f"/resources/{resource_id}/edit",
-        )
-
-    data = api_get("/api/resources")
-    resource = None
-    if isinstance(data, list):
-        resource = next((r for r in data if r["id"] == resource_id), None)
-    if not resource:
-        return redirect("/")
-
-    return render_page(
-        resource_form_html("PUT", f"/resources/{resource_id}/edit", resource),
-    )
-
-
-@app.route("/resources/<int:resource_id>/delete", methods=["POST"])
-def delete_resource(resource_id):
-    if not session.get("user_id"):
-        return redirect("/login")
-    api_delete(f"/api/resources/{resource_id}")
-    return redirect("/")
-
-
-def account_stats_html(profile):
-    return f"""
-<div class="stat"><div class="value">${profile["total_hourly"]:.2f}</div><div class="label">Per Hour</div></div>
-<div class="stat"><div class="value">${profile["total_monthly"]:.2f}</div><div class="label">Per Month (730h)</div></div>
-"""
-
-
 COST_PAGE = """
-<div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h1>Cost Summary</h1>
-        <a href="/export/csv/costs" class="btn btn-outline">CSV</a>
-    </div>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     {% if summary and summary.total_hourly is defined %}
     <div class="grid-2">
@@ -1624,27 +1357,13 @@ def cost_history_proxy():
     )
 
 
-@app.route("/set-budget", methods=["POST"])
-def set_budget():
+@app.route("/set-subscription", methods=["POST"])
+def set_subscription():
     if not session.get("user_id"):
-        return redirect("/login")
-    try:
-        amount = int(float(request.form.get("budget", DEFAULT_BUDGET)))
-        session["budget"] = max(1, amount)
-    except (ValueError, TypeError):
-        pass
-    return redirect("/")
-
-
-@app.route("/resources/bulk", methods=["POST"])
-def bulk_action():
-    if not session.get("user_id"):
-        return redirect("/login")
-    action = request.form.get("action")
-    ids_str = request.form.get("ids", "")
-    ids = [int(x.strip()) for x in ids_str.split(",") if x.strip()]
-    if action and ids:
-        api_post("/api/resources/batch", {"action": action, "ids": ids})
+        return {"error": "unauthorized"}, 401
+    sub_id = request.form.get("subscription_id", "")
+    if sub_id:
+        session["subscription_id"] = sub_id
     return redirect("/")
 
 

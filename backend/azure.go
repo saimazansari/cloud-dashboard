@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/costmanagement/armcostmanagement"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 )
 
 type AzureManager struct {
@@ -19,6 +21,13 @@ type AzureManager struct {
 	credential     *azidentity.DefaultAzureCredential
 	resourceGraph  *armresourcegraph.Client
 	vmClient       *armcompute.VirtualMachinesClient
+}
+
+type SubscriptionInfo struct {
+	ID             string `json:"id"`
+	DisplayName    string `json:"display_name"`
+	State          string `json:"state"`
+	IsCurrent      bool   `json:"is_current"`
 }
 
 func NewAzureManager(subscriptionID string) (*AzureManager, error) {
@@ -43,6 +52,50 @@ func NewAzureManager(subscriptionID string) (*AzureManager, error) {
 		resourceGraph:  rgClient,
 		vmClient:       vmClient,
 	}, nil
+}
+
+func (a *AzureManager) ListSubscriptions(ctx context.Context) ([]SubscriptionInfo, error) {
+	subClient, err := armsubscriptions.NewClient(a.credential, nil)
+	if err != nil {
+		return nil, fmt.Errorf("subscriptions client: %w", err)
+	}
+
+	pager := subClient.NewListPager(nil)
+	var subs []SubscriptionInfo
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list subscriptions: %w", err)
+		}
+		for _, s := range page.Value {
+			if s == nil {
+				continue
+			}
+			id := ""
+			if s.SubscriptionID != nil {
+				id = *s.SubscriptionID
+			}
+			name := id
+			if s.DisplayName != nil {
+				name = *s.DisplayName
+			}
+			state := ""
+			if s.State != nil {
+				state = string(*s.State)
+			}
+			subs = append(subs, SubscriptionInfo{
+				ID:          id,
+				DisplayName: name,
+				State:       state,
+				IsCurrent:   id == a.subscriptionID,
+			})
+		}
+	}
+
+	if subs == nil {
+		subs = []SubscriptionInfo{}
+	}
+	return subs, nil
 }
 
 var azureTypeMap = map[string]string{
@@ -81,6 +134,7 @@ type azureResourceResult struct {
 	ResourceGroup string                 `json:"resourceGroup"`
 	Tags          map[string]interface{} `json:"tags,omitempty"`
 	Properties    map[string]interface{} `json:"properties,omitempty"`
+	Sku           map[string]interface{} `json:"sku,omitempty"`
 }
 
 func (a *AzureManager) getVMStatus(ctx context.Context, resourceGroup, vmName string) string {
@@ -140,6 +194,30 @@ func extractProvisioningState(props map[string]interface{}) string {
 	return ""
 }
 
+func extractSku(sku map[string]interface{}, props map[string]interface{}) string {
+	if sku != nil {
+		if name, ok := sku["name"].(string); ok {
+			return name
+		}
+		if name, ok := sku["Name"].(string); ok {
+			return name
+		}
+	}
+	if props != nil {
+		if s, ok := props["sku"]; ok {
+			if m, ok := s.(map[string]interface{}); ok {
+				if name, ok := m["name"].(string); ok {
+					return name
+				}
+			}
+		}
+		if s, ok := props["skuName"].(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 func parseTags(azureTags map[string]interface{}) map[string]string {
 	tags := make(map[string]string)
 	for k, v := range azureTags {
@@ -154,7 +232,7 @@ func parseTags(azureTags map[string]interface{}) map[string]string {
 
 func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
 	query := fmt.Sprintf(
-		`resources | where subscriptionId == '%s' | project id, name, type, location, resourceGroup, tags, properties`,
+		`resources | where subscriptionId == '%s' | project id, name, type, location, resourceGroup, tags, properties, sku`,
 		a.subscriptionID,
 	)
 
@@ -189,16 +267,19 @@ func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
 
 		now := time.Now()
 		r := Resource{
-			ID:          i + 1,
-			UserID:      0,
-			Name:        ar.Name,
-			Type:        rType,
-			Region:      ar.Location,
-			CostPerHour: costPerHour(rType),
-			Status:      status,
-			Tags:        parseTags(ar.Tags),
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			ID:             i + 1,
+			UserID:         0,
+			Name:           ar.Name,
+			Type:           rType,
+			Region:         ar.Location,
+			CostPerHour:    costPerHour(rType),
+			Status:         status,
+			Tags:           parseTags(ar.Tags),
+			CreatedAt:      now,
+			UpdatedAt:      now,
+			ResourceGroup:  ar.ResourceGroup,
+			SubscriptionID: a.subscriptionID,
+			Sku:            extractSku(ar.Sku, ar.Properties),
 		}
 		r.Tags["_azure_id"] = ar.ID
 		r.Tags["_resource_group"] = ar.ResourceGroup
@@ -216,8 +297,12 @@ func (a *AzureManager) GetResource(ctx context.Context, resourceID string) (Reso
 	if err != nil {
 		return Resource{}, err
 	}
+	idNum, err := strconv.Atoi(resourceID)
+	if err != nil {
+		return Resource{}, fmt.Errorf("invalid resource id: %s", resourceID)
+	}
 	for _, r := range resources {
-		if r.Tags["_azure_id"] == resourceID {
+		if r.ID == idNum {
 			return r, nil
 		}
 	}
@@ -285,48 +370,6 @@ func (a *AzureManager) queryCost(ctx context.Context) (*armcostmanagement.QueryC
 		},
 		Dataset: &armcostmanagement.QueryDataset{
 			Granularity: toPtr(armcostmanagement.GranularityTypeDaily),
-			Aggregation: map[string]*armcostmanagement.QueryAggregation{
-				"totalCost": {
-					Name:     toPtr("PreTaxCost"),
-					Function: toPtr(armcostmanagement.FunctionTypeSum),
-				},
-			},
-		},
-	}
-
-	costClient, err := armcostmanagement.NewQueryClient(a.credential, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := costClient.Usage(ctx, scope, query, nil)
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func (a *AzureManager) queryCostWithGrouping(ctx context.Context) (*armcostmanagement.QueryClientUsageResponse, error) {
-	endDate := time.Now()
-	startDate := endDate.AddDate(0, 0, -30)
-	scope := fmt.Sprintf("/subscriptions/%s", a.subscriptionID)
-
-	grouping := armcostmanagement.QueryGrouping{
-		Type: toPtr(armcostmanagement.QueryColumnTypeDimension),
-		Name: toPtr("ResourceType"),
-	}
-
-	timeframe := armcostmanagement.TimeframeTypeCustom
-	query := armcostmanagement.QueryDefinition{
-		Type:      toPtr(armcostmanagement.ExportTypeActualCost),
-		Timeframe: &timeframe,
-		TimePeriod: &armcostmanagement.QueryTimePeriod{
-			From: &startDate,
-			To:   &endDate,
-		},
-		Dataset: &armcostmanagement.QueryDataset{
-			Granularity: toPtr(armcostmanagement.GranularityTypeDaily),
-			Grouping:    []*armcostmanagement.QueryGrouping{&grouping},
 			Aggregation: map[string]*armcostmanagement.QueryAggregation{
 				"totalCost": {
 					Name:     toPtr("PreTaxCost"),

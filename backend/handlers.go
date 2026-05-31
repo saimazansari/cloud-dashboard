@@ -6,6 +6,11 @@ import (
 	"strconv"
 )
 
+func userIDFromRequest(r *http.Request) int {
+	id, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	return id
+}
+
 type RegisterRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -20,15 +25,6 @@ type AuthResponse struct {
 	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
 	Token    string `json:"token"`
-}
-
-type ResourcePayload struct {
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
-	Region      string            `json:"region,omitempty"`
-	CostPerHour float64           `json:"cost_per_hour,omitempty"`
-	Status      string            `json:"status,omitempty"`
-	Tags        map[string]string `json:"tags,omitempty"`
 }
 
 type DeployPayload struct {
@@ -121,7 +117,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListResources(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 
 	if s.az != nil {
 		resources, err := s.az.ListResources(r.Context())
@@ -148,39 +144,8 @@ func (s *Server) ListResources(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resources)
 }
 
-func (s *Server) CreateResource(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
-
-	var body ResourcePayload
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if body.Name == "" || body.Type == "" {
-		writeError(w, http.StatusBadRequest, "resource name and type are required")
-		return
-	}
-
-	resource := Resource{
-		Name:        body.Name,
-		Type:        body.Type,
-		Region:      body.Region,
-		CostPerHour: body.CostPerHour,
-		Status:      body.Status,
-		Tags:        body.Tags,
-	}
-
-	created, err := s.createResource(r.Context(), userID, resource)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create resource")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, created)
-}
-
 func (s *Server) GetResource(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 	resourceIDStr := r.PathValue("id")
 
 	if s.az != nil {
@@ -210,7 +175,7 @@ func (s *Server) GetResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deployments, _ := s.listResourceDeployments(r.Context(), userID, resourceID)
+	deployments, _ := s.listDeployments(r.Context(), userID, resourceID)
 
 	result := map[string]interface{}{
 		"resource":    resource,
@@ -219,72 +184,8 @@ func (s *Server) GetResource(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) UpdateResource(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
-
-	resourceID, err := strconv.Atoi(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid resource id")
-		return
-	}
-
-	var body ResourcePayload
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if body.Name == "" || body.Type == "" {
-		writeError(w, http.StatusBadRequest, "resource name and type are required")
-		return
-	}
-
-	resource := Resource{
-		Name:        body.Name,
-		Type:        body.Type,
-		Region:      body.Region,
-		CostPerHour: body.CostPerHour,
-		Status:      body.Status,
-		Tags:        body.Tags,
-	}
-
-	updated, err := s.updateResource(r.Context(), userID, resourceID, resource)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "resource not found")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, updated)
-}
-
-func (s *Server) DeleteResource(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
-
-	if s.az != nil {
-		resourceIDStr := r.PathValue("id")
-		if err := s.az.DeleteResource(r.Context(), resourceIDStr); err != nil {
-			writeError(w, http.StatusNotFound, "resource not found")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
-		return
-	}
-
-	resourceID, err := strconv.Atoi(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid resource id")
-		return
-	}
-
-	if err := s.deleteResource(r.Context(), userID, resourceID); err != nil {
-		writeError(w, http.StatusNotFound, "resource not found")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
-}
-
 func (s *Server) BatchAction(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 
 	var body BatchPayload
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -343,7 +244,7 @@ func (s *Server) CostSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 
 	summary, err := s.getCostSummary(r.Context(), userID)
 	if err != nil {
@@ -355,7 +256,7 @@ func (s *Server) CostSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) TriggerDeployment(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 
 	var body DeployPayload
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -387,7 +288,7 @@ func (s *Server) CostHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 
 	entries, err := s.getCostHistory(r.Context(), userID)
 	if err != nil {
@@ -398,8 +299,21 @@ func (s *Server) CostHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, entries)
 }
 
+func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
+	if s.az == nil {
+		writeError(w, http.StatusServiceUnavailable, "Azure integration not enabled")
+		return
+	}
+	subs, err := s.az.ListSubscriptions(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list subscriptions")
+		return
+	}
+	writeJSON(w, http.StatusOK, subs)
+}
+
 func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.Atoi(r.Header.Get("X-User-ID"))
+	userID := userIDFromRequest(r)
 
 	deployments, err := s.listDeployments(r.Context(), userID)
 	if err != nil {

@@ -54,14 +54,12 @@ func main() {
 	mux.HandleFunc("POST /api/login", server.Login)
 	mux.HandleFunc("GET /api/resources", server.requireAuth(server.ListResources))
 	mux.HandleFunc("GET /api/resources/{id}", server.requireAuth(server.GetResource))
-	mux.HandleFunc("POST /api/resources", server.requireAuth(server.CreateResource))
-	mux.HandleFunc("PUT /api/resources/{id}", server.requireAuth(server.UpdateResource))
-	mux.HandleFunc("DELETE /api/resources/{id}", server.requireAuth(server.DeleteResource))
 	mux.HandleFunc("POST /api/resources/batch", server.requireAuth(server.BatchAction))
 	mux.HandleFunc("GET /api/cost-summary", server.requireAuth(server.CostSummary))
 	mux.HandleFunc("POST /api/deployments", server.requireAuth(server.TriggerDeployment))
 	mux.HandleFunc("GET /api/deployments", server.requireAuth(server.ListDeployments))
 	mux.HandleFunc("GET /api/cost-history", server.requireAuth(server.CostHistory))
+	mux.HandleFunc("GET /api/subscriptions", server.requireAuth(server.ListSubscriptions))
 
 	log.Printf("server listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, cors(mux)))
@@ -78,7 +76,7 @@ func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-User-ID, X-Auth-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-User-ID, X-Auth-Token, X-Subscription-ID")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
