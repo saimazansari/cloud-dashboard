@@ -1,4 +1,4 @@
-name: "Terraform: Deploy Azure Infrastructure"
+name: "New Subscription Deployment"
 
 on:
   workflow_dispatch:
