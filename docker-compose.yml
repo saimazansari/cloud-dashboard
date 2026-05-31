@@ -23,6 +23,12 @@ services:
       PORT: "8080"
       DATABASE_URL: "postgres://postgres:postgres@postgres:5432/clouddashboard?sslmode=disable"
       AZURE_SUBSCRIPTION_ID: "${AZURE_SUBSCRIPTION_ID}"
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET}"
+      AZURE_CONFIG_DIR: /root/.azure
+    volumes:
+      - ~/.azure:/root/.azure:rw
     depends_on:
       postgres:
         condition: service_healthy
