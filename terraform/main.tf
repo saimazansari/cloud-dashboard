@@ -1,5 +1,4 @@
 terraform {
-  required_version = ">= 1.6"
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -7,132 +6,68 @@ terraform {
     }
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.6"
+      version = "~> 3.0"
     }
-  }
-  backend "azurerm" {
-    resource_group_name  = "tfstate-rg"
-    storage_account_name = "tfstate181199"
-    container_name       = "tfstate"
-    key                  = "cloud-dashboard.tfstate"
   }
 }
 
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id
 }
 
-variable "subscription_id" {
-  type        = string
-  description = "Azure subscription ID"
+resource "random_password" "vm_admin" {
+  length  = 24
+  special = false
 }
 
-variable "location" {
-  type        = string
-  default     = "eastus"
-  description = "Azure region"
+resource "random_string" "kv_suffix" {
+  length  = 8
+  numeric = true
+  special = false
+  upper   = false
 }
 
-variable "resource_group_name" {
-  type        = string
-  default     = "cloud-dashboard-demo"
-  description = "Primary resource group name"
+resource "random_string" "storage_suffix" {
+  length  = 8
+  numeric = true
+  special = false
+  upper   = false
 }
 
-variable "vnet_name" {
-  type        = string
-  default     = "demo-vnet"
-  description = "Virtual Network name"
-}
-
-variable "vnet_address_space" {
-  type        = list(string)
-  default     = ["10.0.0.0/16"]
-  description = "VNet address space"
-}
-
-variable "deploy_vnet" {
-  type        = bool
-  default     = true
-  description = "Deploy Virtual Network"
-}
-
-variable "deploy_nsg" {
-  type        = bool
-  default     = true
-  description = "Deploy Network Security Group"
-}
-
-variable "deploy_key_vault" {
-  type        = bool
-  default     = true
-  description = "Deploy Key Vault"
-}
-
-variable "deploy_storage" {
-  type        = bool
-  default     = true
-  description = "Deploy Storage Account"
-}
-
-variable "environment" {
-  type        = string
-  default     = "demo"
-  description = "Environment tag"
-}
-
-variable "nsg_name" {
-  type        = string
-  default     = "demo-nsg"
-  description = "Network Security Group name"
-}
-
-variable "storage_account_name" {
-  type        = string
-  default     = ""
-  description = "Storage account name (auto-generated if empty)"
-}
+# --- Resource Group ---
 
 resource "azurerm_resource_group" "main" {
-  name     = var.resource_group_name
-  location = var.location
-
-  tags = {
-    environment = var.environment
-    managed_by  = "terraform"
-  }
+  name     = "CLOUD-DASHBOARD-DEMO"
+  location = "westus3"
 }
 
-resource "azurerm_virtual_network" "demo" {
-  count               = var.deploy_vnet ? 1 : 0
-  name                = var.vnet_name
-  location            = azurerm_resource_group.main.location
+# --- VNet ---
+
+resource "azurerm_virtual_network" "main" {
+  name                = "demo-vnet"
+  location            = "westus3"
   resource_group_name = azurerm_resource_group.main.name
-  address_space       = var.vnet_address_space
-
-  tags = {
-    environment = var.environment
-    managed_by  = "terraform"
-  }
+  address_space       = ["10.0.0.0/16"]
 }
 
-resource "azurerm_subnet" "default" {
-  count                = var.deploy_vnet ? 1 : 0
+# --- Subnet ---
+
+resource "azurerm_subnet" "main" {
   name                 = "default"
   resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.demo[0].name
-  address_prefixes     = ["10.0.1.0/24"]
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.0.0/24"]
 }
 
-resource "azurerm_network_security_group" "demo" {
-  count               = var.deploy_nsg ? 1 : 0
-  name                = var.nsg_name
-  location            = azurerm_resource_group.main.location
+# --- NSG ---
+
+resource "azurerm_network_security_group" "main" {
+  name                = "demo-nsg"
+  location            = "westus3"
   resource_group_name = azurerm_resource_group.main.name
 
   security_rule {
-    name                       = "AllowSSH"
+    name                       = "SSH"
     priority                   = 1000
     direction                  = "Inbound"
     access                     = "Allow"
@@ -142,73 +77,87 @@ resource "azurerm_network_security_group" "demo" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+}
 
-  tags = {
-    environment = var.environment
-    managed_by  = "terraform"
+# --- Public IP ---
+
+resource "azurerm_public_ip" "main" {
+  name                = "demo-vmPublicIP"
+  location            = "westus3"
+  resource_group_name = azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+# --- NIC ---
+
+resource "azurerm_network_interface" "main" {
+  name                = "demo-vmVMNic"
+  location            = "westus3"
+  resource_group_name = azurerm_resource_group.main.name
+
+  ip_configuration {
+    name                          = "ipconfig1"
+    subnet_id                     = azurerm_subnet.main.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.main.id
   }
 }
 
-resource "random_id" "suffix" {
-  byte_length = 3
+resource "azurerm_network_interface_security_group_association" "main" {
+  network_interface_id      = azurerm_network_interface.main.id
+  network_security_group_id = azurerm_network_security_group.main.id
 }
 
-resource "azurerm_key_vault" "demo" {
-  count                      = var.deploy_key_vault ? 1 : 0
-  name                       = "kv-${var.environment}-${random_id.suffix.hex}"
-  location                   = azurerm_resource_group.main.location
-  resource_group_name        = azurerm_resource_group.main.name
-  tenant_id                  = data.azurerm_client_config.current.tenant_id
-  sku_name                   = "standard"
-  soft_delete_retention_days = 7
-  purge_protection_enabled   = false
-
-  tags = {
-    environment = var.environment
-    managed_by  = "terraform"
-  }
-}
-
-resource "azurerm_storage_account" "demo" {
-  count                    = var.deploy_storage ? 1 : 0
-  name                     = var.storage_account_name != "" ? var.storage_account_name : "st${var.environment}${random_id.suffix.hex}"
-  location                 = azurerm_resource_group.main.location
-  resource_group_name      = azurerm_resource_group.main.name
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "terraform"
-  }
-}
+# --- Key Vault ---
 
 data "azurerm_client_config" "current" {}
 
-output "resource_group" {
-  value = azurerm_resource_group.main.name
+resource "azurerm_key_vault" "demo" {
+  name                = "demo-kv-${random_string.kv_suffix.result}"
+  location            = "westus3"
+  resource_group_name = azurerm_resource_group.main.name
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "standard"
 }
 
-output "location" {
-  value = azurerm_resource_group.main.location
+# --- VM ---
+
+resource "azurerm_linux_virtual_machine" "main" {
+  name                = "demo-vm"
+  location            = "westus3"
+  resource_group_name = azurerm_resource_group.main.name
+  size                = "Standard_D2ds_v6"
+  admin_username      = "azureuser"
+  admin_password      = random_password.vm_admin.result
+  disable_password_authentication = false
+  network_interface_ids = [
+    azurerm_network_interface.main.id,
+  ]
+
+  os_disk {
+    name                 = "demo-vm_OsDisk_1"
+    caching              = "ReadWrite"
+    storage_account_type = "Premium_LRS"
+    disk_size_gb         = 30
+  }
+
+  source_image_reference {
+    publisher = "canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts-gen2"
+    version   = "latest"
+  }
 }
 
-output "vnet_id" {
-  value = var.deploy_vnet ? azurerm_virtual_network.demo[0].id : null
-}
+# --- Storage Account ---
 
-output "vnet_name" {
-  value = var.deploy_vnet ? azurerm_virtual_network.demo[0].name : null
-}
-
-output "nsg_id" {
-  value = var.deploy_nsg ? azurerm_network_security_group.demo[0].id : null
-}
-
-output "key_vault_uri" {
-  value = var.deploy_key_vault ? azurerm_key_vault.demo[0].vault_uri : null
-}
-
-output "storage_account_name" {
-  value = var.deploy_storage ? azurerm_storage_account.demo[0].name : null
+resource "azurerm_storage_account" "main" {
+  name                     = "demostorage${random_string.storage_suffix.result}"
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = "westus3"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  account_kind             = "StorageV2"
+  access_tier              = "Hot"
 }

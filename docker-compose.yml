@@ -27,6 +27,9 @@ services:
       AZURE_CLIENT_ID: "${AZURE_CLIENT_ID}"
       AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET}"
       AZURE_CONFIG_DIR: /root/.azure
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
     volumes:
       - ~/.azure:/root/.azure:rw
     depends_on:
@@ -40,6 +43,9 @@ services:
     environment:
       BACKEND_URL: "http://backend:8080"
       SECRET_KEY: "change-this-to-a-secure-random-key"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
     depends_on:
       - backend
 

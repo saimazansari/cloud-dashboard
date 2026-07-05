@@ -241,7 +241,10 @@ func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
 		Subscriptions: []*string{&a.subscriptionID},
 	}
 
-	result, err := a.resourceGraph.Resources(ctx, req, nil)
+	rgCtx, rgCancel := context.WithTimeout(ctx, 20*time.Second)
+	defer rgCancel()
+
+	result, err := a.resourceGraph.Resources(rgCtx, req, nil)
 	if err != nil {
 		return nil, fmt.Errorf("resource graph query: %w", err)
 	}
@@ -262,7 +265,9 @@ func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
 		status := a.resourceStatus(rType, extractProvisioningState(ar.Properties))
 
 		if strings.ToLower(ar.Type) == "microsoft.compute/virtualmachines" {
-			status = a.getVMStatus(ctx, ar.ResourceGroup, ar.Name)
+			vmCtx, vmCancel := context.WithTimeout(ctx, 5*time.Second)
+			status = a.getVMStatus(vmCtx, ar.ResourceGroup, ar.Name)
+			vmCancel()
 		}
 
 		now := time.Now()
@@ -325,6 +330,22 @@ func (a *AzureManager) StopResource(ctx context.Context, resourceID string) erro
 	return err
 }
 
+func (a *AzureManager) StartResource(ctx context.Context, resourceID string) error {
+	parts := strings.Split(resourceID, "/")
+	if len(parts) < 9 {
+		return fmt.Errorf("invalid ARM ID: %s", resourceID)
+	}
+	resourceGroup := parts[4]
+	resourceName := parts[len(parts)-1]
+
+	poller, err := a.vmClient.BeginStart(ctx, resourceGroup, resourceName, nil)
+	if err != nil {
+		return fmt.Errorf("start VM: %w", err)
+	}
+	_, err = poller.PollUntilDone(ctx, nil)
+	return err
+}
+
 func (a *AzureManager) DeleteResource(ctx context.Context, resourceID string) error {
 	parts := strings.Split(resourceID, "/")
 	if len(parts) < 9 {
@@ -356,6 +377,9 @@ func (a *AzureManager) GetCostSummary(ctx context.Context) (CostSummary, error) 
 }
 
 func (a *AzureManager) queryCost(ctx context.Context) (*armcostmanagement.QueryClientUsageResponse, error) {
+	qCtx, qCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer qCancel()
+
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -30)
 	scope := fmt.Sprintf("/subscriptions/%s", a.subscriptionID)
@@ -384,7 +408,7 @@ func (a *AzureManager) queryCost(ctx context.Context) (*armcostmanagement.QueryC
 		return nil, err
 	}
 
-	result, err := costClient.Usage(ctx, scope, query, nil)
+	result, err := costClient.Usage(qCtx, scope, query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -537,6 +561,10 @@ func (a *AzureManager) BatchAction(ctx context.Context, action string, resources
 		switch action {
 		case "stop":
 			if err := a.StopResource(ctx, azID); err != nil {
+				return err
+			}
+		case "start":
+			if err := a.StartResource(ctx, azID); err != nil {
 				return err
 			}
 		case "terminate":

@@ -13,3 +13,6 @@ terraform.tfstate.backup
 crash.log
 override.tf
 override.tf.json
+
+# Go binaries
+backend/cloud-dashboard-backend

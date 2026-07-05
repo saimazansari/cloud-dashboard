@@ -1,8 +1,0 @@
-subscription_id     = "324dab9a-475f-4382-938a-2227610f9a94"
-location            = "eastus"
-resource_group_name = "cloud-dashboard-demo"
-environment         = "demo"
-deploy_vnet         = true
-deploy_nsg          = true
-deploy_key_vault    = true
-deploy_storage      = true
