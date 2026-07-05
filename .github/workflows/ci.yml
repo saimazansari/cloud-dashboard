@@ -38,8 +38,8 @@ jobs:
         working-directory: ./backend
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.24"
           cache-dependency-path: ./backend/go.sum
@@ -75,8 +75,8 @@ jobs:
         working-directory: ./frontend
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -107,7 +107,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate backend Dockerfile
         run: docker build -t cloud-dashboard-backend backend/ --quiet
@@ -118,7 +118,7 @@ jobs:
       - name: Validate nginx config syntax
         run: docker run --rm -v $PWD/nginx:/etc/nginx/conf.d nginx:alpine nginx -t
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.10"
 
@@ -134,11 +134,11 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Run gitleaks (secret scanning)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
