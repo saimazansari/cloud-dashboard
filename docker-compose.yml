@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       POSTGRES_DB: clouddashboard
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -19,7 +19,7 @@ services:
     build: ./backend
     environment:
       PORT: "8080"
-      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/clouddashboard?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/clouddashboard?sslmode=disable"
       AZURE_SUBSCRIPTION_ID: "${AZURE_SUBSCRIPTION_ID}"
       AZURE_TENANT_ID: "${AZURE_TENANT_ID}"
       AZURE_CLIENT_ID: "${AZURE_CLIENT_ID}"
@@ -38,7 +38,7 @@ services:
     build: ./frontend
     environment:
       BACKEND_URL: "http://backend:8080"
-      SECRET_KEY: "change-this-to-a-secure-random-key"
+      SECRET_KEY: "${SECRET_KEY:-replace-with-a-random-secret}"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
       GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
       GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
