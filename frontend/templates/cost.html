@@ -1,0 +1,143 @@
+{% extends "layout.html" %}
+{% block content %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+    {% if summary and summary.total_hourly is defined %}
+    <div class="grid-2">
+        <div class="stat">
+            <div class="value">${{ "%.2f"|format(summary.total_hourly) }}</div>
+            <div class="label">Per Hour</div>
+        </div>
+        <div class="stat">
+            <div class="value">${{ "%.2f"|format(summary.total_monthly) }}</div>
+            <div class="label">Per Month (730h)</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Cost Trend (Last 30 Days)</h2>
+    <canvas id="trendChart" style="max-height:220px;margin:8px 0 16px;"></canvas>
+</div>
+
+{% if summary and summary.by_type %}
+<div class="card">
+    <h2>Cost by Resource Type</h2>
+    <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+    <br>
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Count</th>
+            <th>Cost/hr</th>
+            <th>Cost/month</th>
+        </tr>
+        {% for entry in summary.by_type %}
+        <tr>
+            <td><span class="badge badge-neutral">{{ entry.type }}</span></td>
+            <td>{{ entry.count }}</td>
+            <td>${{ "%.4f"|format(entry.total_hourly) }}</td>
+            <td>${{ "%.2f"|format(entry.total_monthly) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+{% if summary and summary.resources %}
+<div class="card">
+    <h2>Resource Breakdown</h2>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Cost/hr</th>
+            <th>Cost/month</th>
+        </tr>
+        {% for entry in summary.resources %}
+        <tr>
+            <td>{{ entry.name }}</td>
+            <td><span class="badge badge-neutral">{{ entry.type }}</span></td>
+            <td>${{ "%.4f"|format(entry.cost_per_hour) }}</td>
+            <td>${{ "%.2f"|format(entry.monthly_cost) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+
+{% endblock %}
+{% block scripts %}
+<script>
+{% if summary and summary.total_hourly is defined %}
+(function() {
+    var textColor = '#8892a6';
+    fetch('/api/cost-history')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data || !data.length) return;
+            var labels = data.map(function(e) { return e.date.slice(5); });
+            var values = data.map(function(e) { return e.total_cost; });
+            var gradient = document.getElementById('trendChart').getContext('2d').createLinearGradient(0,0,0,220);
+            gradient.addColorStop(0, 'rgba(124,111,247,0.3)');
+            gradient.addColorStop(1, 'rgba(124,111,247,0)');
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Daily Cost',
+                        data: values,
+                        borderColor: '#7c6ff7',
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#7c6ff7'
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { ticks: { color: textColor, maxTicksLimit: 10, font: { size: 10 } } },
+                        y: { beginAtZero: true, ticks: { color: textColor, font: { size: 10 }, callback: function(v) { return '$' + v.toFixed(0); } } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: textColor } }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: true
+                }
+            });
+        });
+})();
+{% endif %}
+
+{% if summary and summary.by_type %}
+(function() {
+    var textColor = '#8892a6';
+    var breakdown = {{ breakdown_json|safe }};
+    var costColors = {{ type_colors_json|safe }};
+
+    new Chart(document.getElementById('barChart'), {
+        type: 'bar',
+        data: {
+            labels: breakdown.map(function(t) { return t.type; }),
+            datasets: [{
+                label: 'Monthly Cost',
+                data: breakdown.map(function(t) { return t.total_monthly; }),
+                backgroundColor: breakdown.map(function(t) { return costColors[t.type] || '#7c6ff7'; })
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, ticks: { color: textColor } },
+                x: { ticks: { color: textColor } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+})();
+{% endif %}
+</script>
+{% endblock %}

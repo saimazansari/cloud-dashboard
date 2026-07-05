@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card" style="max-width:520px;">
+    <h1 style="margin-bottom:8px;">Settings</h1>
+    <p class="meta" style="margin-bottom:20px;">Manage your account preferences</p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    {% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+    <form class="settings-form" id="prefsForm">
+        <h2>Preferences</h2>
+        <div class="form-group">
+            <label>Page Size</label>
+            <select name="page_size" id="prefPageSize">
+                <option value="10">10 per page</option>
+                <option value="25" selected>25 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="auto_refresh" id="prefAutoRefresh" value="1">
+                Auto-refresh dashboard every 30s
+            </label>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="savePreferences()">Save Preferences</button>
+        <span id="prefStatus" style="margin-left:10px;font-size:13px;color:var(--text-dim);"></span>
+    </form>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function savePreferences() {
+    var prefs = {
+        page_size: parseInt(document.getElementById('prefPageSize').value) || 25,
+        auto_refresh: document.getElementById('prefAutoRefresh').checked
+    };
+    var status = document.getElementById('prefStatus');
+    status.textContent = 'Saving...';
+    fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(prefs)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        status.textContent = data.error ? 'Error: ' + data.error : 'Saved!';
+        if (!data.error) setTimeout(function() { status.textContent = ''; }, 2000);
+    })
+    .catch(function() {
+        status.textContent = 'Failed to save';
+    });
+}
+
+fetch('/api/user/preferences')
+    .then(function(r) { return r.json(); })
+    .then(function(prefs) {
+        if (!prefs || prefs.error) return;
+        if (prefs.page_size) document.getElementById('prefPageSize').value = prefs.page_size;
+        if (prefs.auto_refresh) document.getElementById('prefAutoRefresh').checked = true;
+    })
+    .catch(function() {});
+</script>
+{% endblock %}
