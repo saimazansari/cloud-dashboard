@@ -24,10 +24,10 @@ type AzureManager struct {
 }
 
 type SubscriptionInfo struct {
-	ID             string `json:"id"`
-	DisplayName    string `json:"display_name"`
-	State          string `json:"state"`
-	IsCurrent      bool   `json:"is_current"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	State       string `json:"state"`
+	IsCurrent   bool   `json:"is_current"`
 }
 
 func NewAzureManager(subscriptionID string) (*AzureManager, error) {
@@ -231,10 +231,7 @@ func parseTags(azureTags map[string]interface{}) map[string]string {
 }
 
 func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
-	query := fmt.Sprintf(
-		`resources | where subscriptionId == '%s' | project id, name, type, location, resourceGroup, tags, properties, sku`,
-		a.subscriptionID,
-	)
+	query := "resources | project id, name, type, location, resourceGroup, tags, properties, sku"
 
 	req := armresourcegraph.QueryRequest{
 		Query:         &query,
@@ -298,6 +295,9 @@ func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
 }
 
 func (a *AzureManager) GetResource(ctx context.Context, resourceID string) (Resource, error) {
+	if strings.HasPrefix(resourceID, "/subscriptions/") {
+		return a.getResourceByARMID(ctx, resourceID)
+	}
 	resources, err := a.ListResources(ctx)
 	if err != nil {
 		return Resource{}, err
@@ -312,6 +312,70 @@ func (a *AzureManager) GetResource(ctx context.Context, resourceID string) (Reso
 		}
 	}
 	return Resource{}, fmt.Errorf("resource not found: %s", resourceID)
+}
+
+func (a *AzureManager) getResourceByARMID(ctx context.Context, armID string) (Resource, error) {
+	safeID := strings.ReplaceAll(armID, "'", "''")
+	query := fmt.Sprintf(
+		`resources | where id == '%s' | project id, name, type, location, resourceGroup, tags, properties, sku`,
+		safeID,
+	)
+	req := armresourcegraph.QueryRequest{
+		Query:         &query,
+		Subscriptions: []*string{&a.subscriptionID},
+	}
+
+	rgCtx, rgCancel := context.WithTimeout(ctx, 20*time.Second)
+	defer rgCancel()
+
+	result, err := a.resourceGraph.Resources(rgCtx, req, nil)
+	if err != nil {
+		return Resource{}, fmt.Errorf("resource graph query: %w", err)
+	}
+
+	jsonData, err := json.Marshal(result.QueryResponse.Data)
+	if err != nil {
+		return Resource{}, fmt.Errorf("marshal resource graph data: %w", err)
+	}
+
+	var azureResources []azureResourceResult
+	if err := json.Unmarshal(jsonData, &azureResources); err != nil {
+		return Resource{}, fmt.Errorf("unmarshal resource graph data: %w", err)
+	}
+
+	if len(azureResources) == 0 {
+		return Resource{}, fmt.Errorf("resource not found: %s", armID)
+	}
+
+	ar := azureResources[0]
+	rType := mapAzureType(ar.Type)
+	status := a.resourceStatus(rType, extractProvisioningState(ar.Properties))
+
+	if strings.ToLower(ar.Type) == "microsoft.compute/virtualmachines" {
+		vmCtx, vmCancel := context.WithTimeout(ctx, 5*time.Second)
+		status = a.getVMStatus(vmCtx, ar.ResourceGroup, ar.Name)
+		vmCancel()
+	}
+
+	now := time.Now()
+	r := Resource{
+		ID:             1,
+		UserID:         0,
+		Name:           ar.Name,
+		Type:           rType,
+		Region:         ar.Location,
+		CostPerHour:    costPerHour(rType),
+		Status:         status,
+		Tags:           parseTags(ar.Tags),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ResourceGroup:  ar.ResourceGroup,
+		SubscriptionID: a.subscriptionID,
+		Sku:            extractSku(ar.Sku, ar.Properties),
+	}
+	r.Tags["_azure_id"] = ar.ID
+	r.Tags["_resource_group"] = ar.ResourceGroup
+	return r, nil
 }
 
 func (a *AzureManager) StopResource(ctx context.Context, resourceID string) error {

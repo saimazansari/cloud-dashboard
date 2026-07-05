@@ -4,6 +4,7 @@ import os
 import csv
 import io
 import json
+import secrets
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -12,6 +13,26 @@ app.secret_key = os.environ.get("SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("SECRET_KEY environment variable is required")
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+if not app.debug:
+    app.config["SESSION_COOKIE_SECURE"] = True
+
+
+@app.before_request
+def csrf_check():
+    if request.method in ("POST", "PUT", "DELETE") and not request.path.startswith("/api/"):
+        token = request.form.get("_csrf_token") or request.headers.get("X-CSRF-Token")
+        expected = session.get("_csrf_token")
+        if not expected or not token or token != expected:
+            return jsonify({"error": "CSRF validation failed"}), 403
+
+
+def get_csrf_token():
+    if "_csrf_token" not in session:
+        session["_csrf_token"] = secrets.token_hex(32)
+    return session["_csrf_token"]
+
 
 @app.after_request
 def set_cache(response):
@@ -84,6 +105,7 @@ def inject_globals():
     return {
         "google_client_id": GOOGLE_CLIENT_ID,
         "github_client_id": GITHUB_CLIENT_ID,
+        "csrf_token": get_csrf_token(),
     }
 
 def derive_health(status):
@@ -99,6 +121,12 @@ def status_badge_class(status):
     elif status in ("stopped", "degraded", "in_progress", "stopping"):
         return "warning"
     return "danger"
+
+
+def init_session(result):
+    session["user_id"] = result["user_id"]
+    session["username"] = result["username"]
+    session["token"] = result["token"]
 
 
 @app.route("/")
@@ -242,9 +270,7 @@ def login():
             },
         )
         if status_code == 200 and "token" in result:
-            session["user_id"] = result["user_id"]
-            session["username"] = result["username"]
-            session["token"] = result["token"]
+            init_session(result)
             return redirect("/")
         return render_template(
             "login.html",
@@ -258,9 +284,7 @@ def auth_google():
     data = request.get_json(force=True)
     result, status_code = api_post("/api/auth/google", {"credential": data.get("credential", "")})
     if status_code == 200 and "token" in result:
-        session["user_id"] = result["user_id"]
-        session["username"] = result["username"]
-        session["token"] = result["token"]
+        init_session(result)
         return {"ok": True}
     return {"error": result.get("error", "Authentication failed")}, status_code
 
@@ -287,9 +311,7 @@ def auth_github_callback():
 
     result, status_code = api_post("/api/auth/github", {"code": code})
     if status_code == 200 and "token" in result:
-        session["user_id"] = result["user_id"]
-        session["username"] = result["username"]
-        session["token"] = result["token"]
+        init_session(result)
         return redirect("/")
 
     return render_template("login.html", error=result.get("error", "GitHub sign-in failed"))
@@ -312,9 +334,7 @@ def register():
 
         result, status_code = api_post("/api/register", {"username": username, "password": password})
         if status_code == 200 and "token" in result:
-            session["user_id"] = result["user_id"]
-            session["username"] = result["username"]
-            session["token"] = result["token"]
+            init_session(result)
             return redirect("/")
         return render_template("register.html", error=result.get("error", "Registration failed"))
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -207,8 +208,10 @@ func (s *Server) listResources(ctx context.Context, userID int) ([]Resource, err
 			return nil, err
 		}
 
-		json.Unmarshal(tagsJSON, &resource.Tags)
-		if resource.Tags == nil {
+		if err := json.Unmarshal(tagsJSON, &resource.Tags); err != nil {
+			log.Printf("error unmarshalling tags: %v", err)
+			resource.Tags = map[string]string{}
+		} else if resource.Tags == nil {
 			resource.Tags = map[string]string{}
 		}
 
@@ -228,23 +231,23 @@ func (s *Server) batchAction(ctx context.Context, userID int, action string, ids
 	if len(ids) == 0 {
 		return nil
 	}
-	for _, id := range ids {
-		switch action {
-		case "start":
-			if err := s.updateResourceStatus(ctx, userID, id, "running"); err != nil {
-				return err
-			}
-		case "stop":
-			if err := s.updateResourceStatus(ctx, userID, id, "stopped"); err != nil {
-				return err
-			}
-		case "terminate":
-			if err := s.updateResourceStatus(ctx, userID, id, "terminated"); err != nil {
-				return err
-			}
-		}
+
+	var status string
+	switch action {
+	case "start":
+		status = "running"
+	case "stop":
+		status = "stopped"
+	case "terminate":
+		status = "terminated"
+	default:
+		return fmt.Errorf("unknown action: %s", action)
 	}
-	return nil
+
+	_, err := s.db.Exec(ctx,
+		`UPDATE resources SET status=$1, updated_at=NOW() WHERE id = ANY($2) AND user_id=$3`,
+		status, ids, userID)
+	return err
 }
 
 func (s *Server) getCostSummary(ctx context.Context, userID int) (CostSummary, error) {
@@ -355,7 +358,9 @@ func (s *Server) getPreferences(ctx context.Context, userID int) (map[string]int
 	}
 	var prefs map[string]interface{}
 	if len(prefsJSON) > 0 {
-		json.Unmarshal(prefsJSON, &prefs)
+		if err := json.Unmarshal(prefsJSON, &prefs); err != nil {
+			log.Printf("error unmarshalling preferences: %v", err)
+		}
 	}
 	if prefs == nil {
 		prefs = map[string]interface{}{}
@@ -364,8 +369,11 @@ func (s *Server) getPreferences(ctx context.Context, userID int) (map[string]int
 }
 
 func (s *Server) updatePreferences(ctx context.Context, userID int, prefs map[string]interface{}) error {
-	data, _ := json.Marshal(prefs)
-	_, err := s.db.Exec(ctx,
+	data, err := json.Marshal(prefs)
+	if err != nil {
+		return fmt.Errorf("marshal preferences: %w", err)
+	}
+	_, err = s.db.Exec(ctx,
 		`UPDATE users SET preferences = $1 WHERE id = $2`, string(data), userID)
 	return err
 }
@@ -385,13 +393,11 @@ func (s *Server) getResourceByID(ctx context.Context, userID, resourceID int) (R
 	if err != nil {
 		return Resource{}, err
 	}
-	json.Unmarshal(tagsJSON, &resource.Tags)
-	if resource.Tags == nil {
+	if err := json.Unmarshal(tagsJSON, &resource.Tags); err != nil {
+		log.Printf("error unmarshalling tags: %v", err)
+		resource.Tags = map[string]string{}
+	} else if resource.Tags == nil {
 		resource.Tags = map[string]string{}
 	}
 	return resource, nil
 }
-
-
-
-

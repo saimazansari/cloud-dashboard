@@ -1,4 +1,4 @@
-.PHONY: up down rebuild logs restart-backend deploy plan destroy clean
+.PHONY: up down rebuild logs restart-backend deploy plan destroy clean test test-backend test-frontend
 
 # ─── Docker ────────────────────────────────────────────────
 up:
@@ -29,6 +29,15 @@ destroy:
 # ─── Development ───────────────────────────────────────────
 run-backend:
 	scripts/run-backend.sh
+
+# ─── Testing ───────────────────────────────────────────────
+test-backend:
+	cd backend && go test ./...
+
+test-frontend:
+	cd frontend && python -m pytest test_app.py -v
+
+test: test-backend test-frontend
 
 # ─── Cleanup ───────────────────────────────────────────────
 clean:

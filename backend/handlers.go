@@ -133,7 +133,7 @@ func (s *Server) GoogleAuth(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := verifyGoogleToken(r.Context(), body.Credential, s.googleClientID)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid Google token: "+err.Error())
+		writeError(w, http.StatusUnauthorized, "invalid Google token")
 		return
 	}
 
@@ -149,7 +149,7 @@ func (s *Server) GoogleAuth(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.findUserByEmail(r.Context(), email)
 	if err != nil {
-		hash, _ := hashPassword(body.Credential)
+		hash, _ := newSessionToken()
 		user, err = s.createUser(r.Context(), name, email, hash)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "could not create user")
@@ -189,7 +189,7 @@ func (s *Server) GitHubAuth(w http.ResponseWriter, r *http.Request) {
 
 	ghID, username, _, err := exchangeGitHubCode(r.Context(), body.Code, s.githubClientID, s.githubClientSecret)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "GitHub auth failed: "+err.Error())
+		writeError(w, http.StatusUnauthorized, "GitHub authentication failed")
 		return
 	}
 	if username == "" {
@@ -633,5 +633,3 @@ func (s *Server) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "preferences updated"})
 }
-
-

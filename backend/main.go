@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -52,9 +53,44 @@ func (s *Server) getPendingStatus(azID string) (string, bool) {
 	return st, ok
 }
 
+type rateLimiter struct {
+	mu   sync.Mutex
+	data map[string]int
+}
+
+func newRateLimiter() *rateLimiter {
+	rl := &rateLimiter{
+		data: make(map[string]int),
+	}
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			rl.mu.Lock()
+			rl.data = make(map[string]int)
+			rl.mu.Unlock()
+		}
+	}()
+	return rl
+}
+
+func (rl *rateLimiter) allow(key string, limit int) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.data[key]++
+	return rl.data[key] <= limit
+}
+
+var (
+	rlOnce sync.Once
+	rlInst *rateLimiter
+)
+
 func main() {
 	port := env("PORT", "8080")
-	databaseURL := env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/clouddashboard?sslmode=disable")
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL environment variable is required")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -112,8 +148,21 @@ func main() {
 	mux.HandleFunc("GET /api/user/preferences", server.requireAuth(server.GetPreferences))
 	mux.HandleFunc("PUT /api/user/preferences", server.requireAuth(server.UpdatePreferences))
 
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	handler := logging(recovery(rateLimit(cors(mux))))
+
+	srv := &http.Server{
+		Addr:           ":" + port,
+		Handler:        handler,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   20 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
 	log.Printf("server listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, cors(mux)))
+	log.Fatal(srv.ListenAndServe())
 }
 
 func env(key, fallback string) string {
@@ -125,12 +174,67 @@ func env(key, fallback string) string {
 
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin == "http://"+r.Host || origin == "https://"+r.Host {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-User-ID, X-Auth-Token, X-Subscription-ID")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func recovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("panic recovered", "error", fmt.Sprintf("%v", rec))
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func logging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(wrapped, r)
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", wrapped.status,
+			"duration", time.Since(start).String(),
+		)
+	})
+}
+
+func rateLimit(next http.Handler) http.Handler {
+	rlOnce.Do(func() {
+		rlInst = newRateLimiter()
+	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/login" || r.URL.Path == "/api/register" {
+			ip := r.RemoteAddr
+			if !rlInst.allow(ip, 10) {
+				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
