@@ -1,4 +1,7 @@
+'use strict';
 var currentPage = 1;
+var _filterTimer = null;
+var _refreshInterval = null;
 
 function statusBadge(s) {
     if (s === 'running') return 'success';
@@ -21,23 +24,26 @@ function switchSubscription(id) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({subscription_id: id})
-    }).then(function() { location.reload(); });
+    }).then(function() { location.reload(); }).catch(function() {});
 }
 
 function filterTable(inputId, tableId) {
-    var query = document.getElementById(inputId).value.toLowerCase();
-    var rows = document.getElementById(tableId).querySelectorAll('tbody tr');
-    if (query) {
-        currentPage = 1;
-        rows.forEach(function(row) {
-            var text = row.textContent.toLowerCase();
-            row.style.display = text.includes(query) ? '' : 'none';
-        });
-        document.getElementById('pagination').innerHTML = '';
-    } else {
-        rows.forEach(function(r) { r.style.display = ''; });
-        applyPagination();
-    }
+    if (_filterTimer) clearTimeout(_filterTimer);
+    _filterTimer = setTimeout(function() {
+        var query = document.getElementById(inputId).value.toLowerCase();
+        var rows = document.getElementById(tableId).querySelectorAll('tbody tr');
+        if (query) {
+            currentPage = 1;
+            rows.forEach(function(row) {
+                var text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+            document.getElementById('pagination').innerHTML = '';
+        } else {
+            rows.forEach(function(r) { r.style.display = ''; });
+            applyPagination();
+        }
+    }, 200);
 }
 
 function timeAgo(isoString) {
@@ -66,41 +72,60 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function animateCounters() {
-    document.querySelectorAll('.countup').forEach(function(el) {
+    var els = document.querySelectorAll('.countup');
+    if (!els.length) return;
+    var counters = [];
+    els.forEach(function(el) {
         var target = parseFloat(el.getAttribute('data-target'));
         if (isNaN(target)) return;
-        var prefix = el.getAttribute('data-prefix') || '';
-        var decimals = parseInt(el.getAttribute('data-decimals')) || 0;
-        var duration = 800 + Math.random() * 400;
-        var start = performance.now();
-        function step(now) {
-            var pct = Math.min((now - start) / duration, 1);
-            var eased = 1 - Math.pow(1 - pct, 4);
-            var val = eased * target;
-            if (decimals === 0) el.textContent = prefix + Math.round(val);
-            else el.textContent = prefix + val.toFixed(decimals);
-            if (pct < 1) requestAnimationFrame(step);
-            else el.textContent = prefix + target.toFixed(decimals);
-        }
-        requestAnimationFrame(step);
+        counters.push({
+            el: el,
+            target: target,
+            prefix: el.getAttribute('data-prefix') || '',
+            decimals: parseInt(el.getAttribute('data-decimals')) || 0,
+            duration: 800 + Math.random() * 400,
+            start: performance.now()
+        });
     });
+    if (!counters.length) return;
+    function step(now) {
+        var done = 0;
+        counters.forEach(function(c) {
+            var pct = Math.min((now - c.start) / c.duration, 1);
+            var eased = 1 - Math.pow(1 - pct, 4);
+            var val = eased * c.target;
+            if (c.decimals === 0) c.el.textContent = c.prefix + Math.round(val);
+            else c.el.textContent = c.prefix + val.toFixed(c.decimals);
+            if (pct >= 1) {
+                c.el.textContent = c.prefix + c.target.toFixed(c.decimals);
+                done++;
+            }
+        });
+        if (done < counters.length) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
 }
 
 function updateRefreshTime() {
-    var el = document.getElementById('refreshTime');
-    if (el) el.textContent = '0s ago';
+    var refreshEl = document.getElementById('refreshTime');
+    var countEl = document.getElementById('refreshCountdown');
+    if (refreshEl) refreshEl.textContent = '0s ago';
     var start = Date.now();
-    setInterval(function() {
+    if (_refreshInterval) clearInterval(_refreshInterval);
+    _refreshInterval = setInterval(function() {
         var secs = Math.floor((Date.now() - start) / 1000);
-        var el = document.getElementById('refreshTime');
-        if (el) el.textContent = secs + 's ago';
-        var countEl = document.getElementById('refreshCountdown');
-        if (countEl) {
+        var re = document.getElementById('refreshTime');
+        if (re) re.textContent = secs + 's ago';
+        var ce = document.getElementById('refreshCountdown');
+        if (ce) {
             var remaining = 30 - (secs % 30);
-            countEl.textContent = remaining + 's';
+            ce.textContent = remaining + 's';
         }
     }, 1000);
 }
+window.addEventListener('beforeunload', function() {
+    if (_refreshInterval) clearInterval(_refreshInterval);
+});
 
 function showToast(message, type) {
     type = type || 'info';
@@ -109,16 +134,32 @@ function showToast(message, type) {
     var icons = {success:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>', error:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>', info:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'};
     var t = document.createElement('div');
     t.className = 'toast toast-' + type;
-    t.innerHTML = '<span class="toast-icon">' + (icons[type] || '') + '</span><span class="toast-msg">' + message + '</span><button class="toast-close" onclick="this.parentElement.classList.add(\'toast-out\');setTimeout(function(){this.parentElement.remove()}.bind(this),300)">&times;</button>';
+    var iconSpan = document.createElement('span');
+    iconSpan.className = 'toast-icon';
+    iconSpan.innerHTML = icons[type] || '';
+    t.appendChild(iconSpan);
+    var msgSpan = document.createElement('span');
+    msgSpan.className = 'toast-msg';
+    msgSpan.textContent = message;
+    t.appendChild(msgSpan);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.addEventListener('click', function() {
+        t.classList.add('toast-out');
+        setTimeout(function() { t.remove(); }, 300);
+    });
+    t.appendChild(closeBtn);
     container.appendChild(t);
     setTimeout(function() { t.classList.add('toast-out'); setTimeout(function() { t.remove(); }, 300); }, 5000);
 }
 
 function copyId(id, btn) {
+    if (!navigator.clipboard) { btn.textContent = 'n/a'; return; }
     navigator.clipboard.writeText(id).then(function() {
         btn.textContent = 'copied';
         setTimeout(function() { btn.textContent = 'copy'; }, 1500);
-    });
+    }).catch(function() { btn.textContent = 'error'; });
 }
 
 function sortTable(col, th) {
@@ -128,21 +169,27 @@ function sortTable(col, th) {
     var dir = th.classList.contains('asc') ? -1 : 1;
     document.querySelectorAll('#resourceTable th.sortable').forEach(function(h) { h.classList.remove('asc','desc'); });
     th.classList.add(dir === 1 ? 'asc' : 'desc');
-    var text = function(r, c) { var v = r.querySelector('td:nth-child(' + c + ')'); return v ? v.textContent.trim().toLowerCase() : ''; };
     var colIdx = {name:2, type:3, region:4, cost:5, cost_inr:6, health:7, status:8, age:9};
     var idx = colIdx[col] || 2;
-    rows.sort(function(a, b) {
-        var va = text(a, idx), vb = text(b, idx);
-        if (col === 'cost') { va = parseFloat(va.replace(/[^0-9.]/g,'')) || 0; vb = parseFloat(vb.replace(/[^0-9.]/g,'')) || 0; }
-        else if (col === 'age') { va = a.querySelector('.age') ? (a.querySelector('.age').getAttribute('data-age') || '') : va; vb = b.querySelector('.age') ? (b.querySelector('.age').getAttribute('data-age') || '') : vb; }
-        return va < vb ? -dir : va > vb ? dir : 0;
+    var cache = rows.map(function(r) {
+        var cell = r.querySelector('td:nth-child(' + idx + ')');
+        var val = cell ? cell.textContent.trim().toLowerCase() : '';
+        if (col === 'cost') val = parseFloat(val.replace(/[^0-9.]/g,'')) || 0;
+        else if (col === 'age') {
+            var ageEl = r.querySelector('.age');
+            val = ageEl ? ageEl.getAttribute('data-age') || '' : '';
+        }
+        return {row: r, val: val};
     });
-    rows.forEach(function(r) { tbody.appendChild(r); });
+    cache.sort(function(a, b) {
+        return a.val < b.val ? -dir : a.val > b.val ? dir : 0;
+    });
+    cache.forEach(function(item) { tbody.appendChild(item.row); });
     applyPagination();
 }
 
 var PAGE_SIZE = 25;
-var currentPage = 1;
+currentPage = 1;
 
 function applyPagination() {
     var tbody = document.querySelector('#resourceTable tbody');
@@ -164,18 +211,22 @@ function applyPagination() {
     pag.innerHTML = h;
 }
 
+var _chartInstances = [];
+
 function initCharts() {
+    _chartInstances.forEach(function(c) { c.destroy(); });
+    _chartInstances = [];
     var types = {};
     document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) { types[r.getAttribute('data-type')] = (types[r.getAttribute('data-type')] || 0) + 1; });
     var keys = Object.keys(types);
     if (keys.length < 2) return;
     document.getElementById('chartRow').style.display = 'grid';
     var colors = keys.map(function(k) { return window.typeColors[k] || '#8892a6'; });
-    new Chart(document.getElementById('typeChart'), {
+    _chartInstances.push(new Chart(document.getElementById('typeChart'), {
         type: 'doughnut',
         data: { labels: keys, datasets: [{ data: keys.map(function(k) { return types[k]; }), backgroundColor: colors, borderColor: 'var(--card-bg)', borderWidth: 2 }] },
         options: { animation: { duration: 800, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { color: '#8892a6', padding: 12, font: { size: 10 } } } }, cutout: '70%', maintainAspectRatio: false }
-    });
+    }));
     document.getElementById('donutTotal').textContent = keys.reduce(function(s, k) { return s + types[k]; }, 0) + ' total';
     fetch('/api/cost-history').then(function(r) { return r.json(); }).then(function(data) {
         if (!data || !data.length) return;
@@ -184,12 +235,12 @@ function initCharts() {
         var ctx = document.getElementById('costSparkline').getContext('2d');
         var grad = ctx.createLinearGradient(0,0,0,160);
         grad.addColorStop(0, 'rgba(124,111,247,0.3)'); grad.addColorStop(1, 'rgba(124,111,247,0)');
-        new Chart(ctx, {
+        _chartInstances.push(new Chart(ctx, {
             type: 'line',
             data: { labels: labels, datasets: [{ label: 'Daily Cost', data: values, borderColor: '#7c6ff7', backgroundColor: grad, fill: true, tension: 0.3, pointRadius: 2, pointBackgroundColor: '#7c6ff7' }] },
             options: { animation: { duration: 1200, easing: 'easeOutQuart' }, scales: { x: { display: true, ticks: { color: '#8892a6', maxTicksLimit: 8, font: { size: 9 } }, grid: { display: false } }, y: { beginAtZero: true, ticks: { color: '#8892a6', font: { size: 9 }, callback: function(v) { return '$' + v.toFixed(0); } }, grid: { color: 'rgba(255,255,255,0.03)' } } }, plugins: { legend: { display: false } }, maintainAspectRatio: false }
-        });
-    });
+        }));
+    }).catch(function() {});
 }
 (function() {
     var saved;

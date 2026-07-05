@@ -88,7 +88,7 @@
             --orb-5: rgba(217,119,6,0.02);
             --particle: rgba(0,0,0,0.02);
         }
-        * { box-sizing:border-box; margin:0; padding:0; transition:background-color .25s, border-color .25s, box-shadow .25s, color .2s; }
+        * { box-sizing:border-box; margin:0; padding:0; }
         body {
             font-family:var(--font-sans); background:var(--bg); color:var(--text);
             min-height:100vh; overflow-x:hidden; position:relative;
@@ -702,6 +702,18 @@
             .grid-4 { grid-template-columns:1fr; }
             .grid-6 { grid-template-columns:1fr; }
             .section-header { flex-direction:column; align-items:stretch; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            #cursorGlow { display:none; }
+            .bg-particle { display:none; }
+            .stat-card { perspective:none; transform:none !important; }
+            .stat-card:hover { transform:none !important; }
         }
 
         /* Skeleton shimmer */

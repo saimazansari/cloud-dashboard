@@ -1,17 +1,24 @@
-from flask import Flask, session, request, redirect, render_template, Response
+from flask import Flask, session, request, redirect, render_template, Response, jsonify
 import requests
 import os
 import csv
 import io
 import json
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError("SECRET_KEY environment variable is required")
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 
 @app.after_request
-def no_cache(response):
-    response.headers["Cache-Control"] = "no-store, max-age=0"
+def set_cache(response):
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -99,9 +106,16 @@ def dashboard():
     if not session.get("user_id"):
         return redirect("/login")
 
-    data = api_get("/api/resources")
     error = None
     resources = []
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_resources = pool.submit(api_get, "/api/resources")
+        fut_cost = pool.submit(api_get, "/api/cost-summary")
+        fut_subs = pool.submit(api_get, "/api/subscriptions")
+        data = fut_resources.result()
+        cost_data = fut_cost.result()
+        sub_data = fut_subs.result()
 
     if isinstance(data, list):
         for resource in data:
@@ -154,7 +168,6 @@ def dashboard():
         stats["monthly_cost_inr"] = round(hourly_total * HOURS_PER_MONTH * USD_TO_INR, 2)
         type_colors_json = json.dumps({t: type_color(t) for t in groups.keys()})
 
-    cost_data = api_get("/api/cost-summary")
     if isinstance(cost_data, dict) and "error" not in cost_data and cost_data.get("total_monthly"):
         stats["monthly_cost"] = round(cost_data["total_monthly"], 2)
         stats["hourly_cost"] = round(cost_data["total_hourly"], 4)
@@ -167,7 +180,6 @@ def dashboard():
     stats["cost_sofar"] = round(stats["hourly_cost"] * hours_so_far, 2)
     stats["cost_sofar_inr"] = round(stats["cost_sofar"] * USD_TO_INR, 2)
 
-    sub_data = api_get("/api/subscriptions")
     subscriptions = sub_data if isinstance(sub_data, list) else []
 
     if not session.get("subscription_id") and subscriptions:
@@ -319,16 +331,27 @@ def resource_detail_proxy(resource_id):
     return api_get(f"/api/resources/{resource_id}")
 
 
+def safe_redirect(fallback="/"):
+    ref = request.referrer
+    if ref:
+        from urllib.parse import urlparse
+        host = request.host
+        ref_host = urlparse(ref).hostname
+        if ref_host == host:
+            return redirect(ref)
+    return redirect(fallback)
+
+
 @app.route("/api/resources/<int:resource_id>/stop-redirect")
 def resource_stop_redirect(resource_id):
     api_post(f"/api/resources/{resource_id}/stop", {})
-    return redirect(request.referrer or "/")
+    return safe_redirect()
 
 
 @app.route("/api/resources/<int:resource_id>/start-redirect")
 def resource_start_redirect(resource_id):
     api_post(f"/api/resources/{resource_id}/start", {})
-    return redirect(request.referrer or "/")
+    return safe_redirect()
 
 
 @app.route("/api/resources/batch", methods=["POST"])
@@ -371,7 +394,7 @@ def set_subscription():
     sub_id = request.form.get("subscription_id")
     if sub_id:
         session["subscription_id"] = sub_id
-    return redirect(request.referrer or "/")
+    return safe_redirect("/login")
 
 
 @app.route("/logout")
