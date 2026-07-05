@@ -2,10 +2,24 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      backend:
+        description: Run backend checks
+        type: boolean
+        default: true
+      frontend:
+        description: Run frontend checks
+        type: boolean
+        default: true
+      security:
+        description: Run security audit
+        type: boolean
+        default: false
 
 jobs:
   backend:
     name: Backend (Go)
+    if: ${{ inputs.backend }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,14 +36,21 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Tidy check
+        run: go mod tidy && git diff --exit-code -- go.mod go.sum
+
       - name: Build
         run: go build -o /dev/null ./...
 
       - name: Vet
         run: go vet ./...
 
+      - name: Test
+        run: go test ./... -v
+
   frontend:
     name: Frontend (Python + Flask)
+    if: ${{ inputs.frontend }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -47,8 +68,26 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Verify syntax
-        run: python -m py_compile app.py
+      - name: Install test deps
+        run: pip install pytest
+
+      - name: Test
+        run: python -m pytest test_app.py -v
 
       - name: Check imports
         run: python -c "from app import app; print('Flask app loaded OK')"
+
+  security:
+    name: Security Audit
+    if: ${{ inputs.security }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Run gitleaks (secret scanning)
+        uses: gitleaks/gitleaks-action@v2
