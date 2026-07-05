@@ -513,11 +513,17 @@ func (s *Server) initMockResources() {
 	defer s.mockMu.Unlock()
 	base := 1000
 	s.mockResources = []Resource{
-		{Name: "web-prod-01", Type: "Virtual Machine", Region: "east-us", CostPerHour: 0.0860, Status: "stopped", Sku: "Standard_B2s", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+0)}},
-		{Name: "web-staging-01", Type: "Virtual Machine", Region: "west-europe", CostPerHour: 0.0480, Status: "stopped", Sku: "Standard_B1s", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+2)}},
-		{Name: "prod-db-mysql", Type: "Database", Region: "east-us", CostPerHour: 0.0500, Status: "stopped", Sku: "MySQL Flexible Server", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+6)}},
-		{Name: "cdn-prod", Type: "CDN Profile", Region: "east-us", CostPerHour: 0.0100, Status: "running", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+8)}},
-		{Name: "serverless-api", Type: "Serverless Function", Region: "east-us", CostPerHour: 0.0000, Status: "running", Sku: "Consumption Plan", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+10)}},
+		{Name: "web-prod-01", Type: "Virtual Machine", Region: "east-us", CostPerHour: 0.0860, Status: "stopped", Sku: "Standard_B2s", CloudProvider: "azure", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+0)}},
+		{Name: "web-staging-01", Type: "Virtual Machine", Region: "west-europe", CostPerHour: 0.0480, Status: "stopped", Sku: "Standard_B1s", CloudProvider: "azure", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+2)}},
+		{Name: "prod-db-mysql", Type: "Database", Region: "east-us", CostPerHour: 0.0500, Status: "stopped", Sku: "MySQL Flexible Server", CloudProvider: "azure", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+6)}},
+		{Name: "cdn-prod", Type: "CDN Profile", Region: "east-us", CostPerHour: 0.0100, Status: "running", CloudProvider: "azure", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+8)}},
+		{Name: "serverless-api", Type: "Serverless Function", Region: "east-us", CostPerHour: 0.0000, Status: "running", Sku: "Consumption Plan", CloudProvider: "azure", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+10)}},
+		{Name: "web-app-prod", Type: "Virtual Machine", Region: "us-east-1", CostPerHour: 0.0920, Status: "running", Sku: "t3.medium", CloudProvider: "aws", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+20)}},
+		{Name: "db-postgres", Type: "Database", Region: "us-west-2", CostPerHour: 0.0680, Status: "running", Sku: "db.r5.large", CloudProvider: "aws", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+22)}},
+		{Name: "app-lambda", Type: "Serverless Function", Region: "eu-west-1", CostPerHour: 0.0000, Status: "running", Sku: "128MB", CloudProvider: "aws", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+24)}},
+		{Name: "api-node", Type: "Virtual Machine", Region: "us-central1", CostPerHour: 0.0650, Status: "running", Sku: "e2-standard-2", CloudProvider: "gcp", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+30)}},
+		{Name: "bq-dataset", Type: "Database", Region: "us-central1", CostPerHour: 0.0350, Status: "running", Sku: "BigQuery On-Demand", CloudProvider: "gcp", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+32)}},
+		{Name: "storage-bucket", Type: "Storage Account", Region: "us-east1", CostPerHour: 0.0080, Status: "running", CloudProvider: "gcp", Tags: map[string]string{"_mock_id": fmt.Sprintf("%d", base+34)}},
 	}
 }
 
@@ -608,6 +614,82 @@ func (s *Server) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated"})
+}
+
+type BudgetStatus struct {
+	Budget          float64 `json:"budget"`
+	Actual          float64 `json:"actual"`
+	Percentage      float64 `json:"percentage"`
+	Projected       float64 `json:"projected"`
+	Remaining       float64 `json:"remaining"`
+	DaysElapsed     int     `json:"days_elapsed"`
+	DaysInMonth     int     `json:"days_in_month"`
+	Status          string  `json:"status"`
+}
+
+func (s *Server) BudgetStatus(w http.ResponseWriter, r *http.Request) {
+	userID := userIDFromRequest(r)
+
+	prefs, err := s.getPreferences(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not fetch preferences")
+		return
+	}
+
+	budget, ok := prefs["monthly_budget"].(float64)
+	if !ok || budget <= 0 {
+		writeJSON(w, http.StatusOK, BudgetStatus{Status: "not_set"})
+		return
+	}
+
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	daysInMonth := daysIn(now.Year(), now.Month())
+	daysElapsed := int(now.Sub(startOfMonth).Hours()/24) + 1
+
+	var actual float64
+	entries, err := s.getCostHistory(r.Context(), userID)
+	if err == nil {
+		for _, e := range entries {
+			t, parseErr := time.Parse("2006-01-02", e.Date)
+			if parseErr == nil && t.Year() == now.Year() && t.Month() == now.Month() {
+				actual += e.TotalCost
+			}
+		}
+	}
+
+	if actual == 0 {
+		summary, sumErr := s.getCostSummary(r.Context(), userID)
+		if sumErr == nil && summary.TotalMonthly > 0 {
+			actual = summary.TotalMonthly * float64(daysElapsed) / float64(daysInMonth)
+		}
+	}
+
+	percentage := (actual / budget) * 100
+	projected := actual / float64(daysElapsed) * float64(daysInMonth)
+	remaining := budget - actual
+
+	status := "under"
+	if percentage >= 100 {
+		status = "exceeded"
+	} else if percentage >= 80 {
+		status = "warning"
+	}
+
+	writeJSON(w, http.StatusOK, BudgetStatus{
+		Budget:      budget,
+		Actual:      actual,
+		Percentage:  percentage,
+		Projected:   projected,
+		Remaining:   remaining,
+		DaysElapsed: daysElapsed,
+		DaysInMonth: daysInMonth,
+		Status:      status,
+	})
+}
+
+func daysIn(year int, month time.Month) int {
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
 func (s *Server) GetPreferences(w http.ResponseWriter, r *http.Request) {

@@ -57,6 +57,12 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 
+PROVIDER_COLORS = {
+    "azure": "#0078D4",
+    "aws": "#FF9900",
+    "gcp": "#4285F4",
+}
+
 RESOURCE_COLORS = {
     "Virtual Machine": "#7c6ff7",
     "Kubernetes Cluster": "#38bdf8",
@@ -118,6 +124,7 @@ def inject_globals():
         "google_client_id": GOOGLE_CLIENT_ID,
         "github_client_id": GITHUB_CLIENT_ID,
         "csrf_token": get_csrf_token(),
+        "provider_colors": PROVIDER_COLORS,
     }
 
 def derive_health(status):
@@ -165,6 +172,8 @@ def dashboard():
             resource["type_color"] = type_color(resource["type"])
             resource["cost_inr_per_hour"] = round(resource.get("cost_per_hour", 0) * USD_TO_INR, 2)
             resource["monthly_cost_inr"] = round(resource.get("cost_per_hour", 0) * HOURS_PER_MONTH * USD_TO_INR, 2)
+            resource["cloud_provider"] = resource.get("cloud_provider", "azure")
+            resource["provider_color"] = PROVIDER_COLORS.get(resource["cloud_provider"], "#8892a6")
         resources = data
     elif isinstance(data, dict) and "error" in data:
         error = data["error"]
@@ -208,6 +217,8 @@ def dashboard():
         stats["monthly_cost_inr"] = round(hourly_total * HOURS_PER_MONTH * USD_TO_INR, 2)
         type_colors_json = json.dumps({t: type_color(t) for t in groups.keys()})
 
+    provider_colors_json = json.dumps(PROVIDER_COLORS)
+
     if isinstance(cost_data, dict) and "error" not in cost_data and cost_data.get("total_monthly"):
         stats["monthly_cost"] = round(cost_data["total_monthly"], 2)
         stats["hourly_cost"] = round(cost_data["total_hourly"], 4)
@@ -234,6 +245,7 @@ def dashboard():
         stats=stats,
         health=health,
         type_colors_json=type_colors_json,
+        provider_colors_json=provider_colors_json,
         hours_sofar=int(hours_so_far),
         subscriptions=subscriptions,
     )
@@ -419,6 +431,10 @@ def user_preferences_proxy():
             return {"ok": True}
         return result, sc
     return api_get("/api/user/preferences")
+
+@app.route("/api/budget/status")
+def budget_status_proxy():
+    return api_get("/api/budget/status")
 
 
 @app.route("/set-subscription", methods=["POST"])

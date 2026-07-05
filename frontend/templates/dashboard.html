@@ -68,6 +68,30 @@
         <div class="stat-sub">₹{{ "%.2f"|format(stats.hourly_cost_inr) }}/hr &middot; ~₹{{ stats.monthly_cost_inr|int }}/mo est.</div>
     </div>
 </div>
+
+<div class="budget-row" id="budgetRow">
+    <div class="card" style="padding:14px 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div>
+                <div style="font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Budget vs Actual</div>
+                <div id="budgetDashActual" style="font-size:20px;font-weight:700;font-family:var(--font-mono);">—</div>
+            </div>
+            <div style="flex:1;min-width:120px;">
+                <div class="budget-bar" style="height:8px;">
+                    <div class="budget-fill" id="budgetDashFill" style="width:0%;height:100%;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--font-mono);">
+                    <span>$0</span>
+                    <span id="budgetDashLabel">—</span>
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div id="budgetDashPct" style="font-size:18px;font-weight:700;font-family:var(--font-mono);color:var(--text-muted);">—</div>
+                <div id="budgetDashStatus" style="font-size:11px;color:var(--text-dim);">No budget set</div>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 
 <div class="chart-row" id="chartRow" style="display:none;">
@@ -111,13 +135,17 @@
         <div class="skeleton skeleton-row" style="width:40%;margin-bottom:12px;"></div>
         <div class="skeleton skeleton-card" style="height:200px;"></div>
     </div>
-    <div class="type-filter"><select id="typeFilter" onchange="filterByType(this.value)"><option value="">All Types</option></select></div>
+    <div class="type-filter">
+        <select id="typeFilter" onchange="filterByType(this.value)"><option value="">All Types</option></select>
+        <select id="providerFilter" onchange="filterByProvider(this.value)" style="margin-left:8px;"><option value="">All Providers</option><option value="azure">AZURE</option><option value="aws">AWS</option><option value="gcp">GCP</option></select>
+    </div>
     <div class="table-scroll"><table id="resourceTable">
         <thead>
             <tr>
                 <th style="width:32px;">#</th>
                 <th class="sortable" data-col="name">Name <span class="sort-arrow">▲</span></th>
                 <th class="sortable" data-col="type">Type <span class="sort-arrow">▲</span></th>
+                <th class="sortable" data-col="provider">Provider <span class="sort-arrow">▲</span></th>
                 <th class="sortable" data-col="region">Region <span class="sort-arrow">▲</span></th>
                 <th class="sortable" data-col="cost">Cost <span class="sort-arrow">▲</span></th>
                 <th class="sortable" data-col="cost_inr">Cost (INR) <span class="sort-arrow">▲</span></th>
@@ -129,13 +157,14 @@
         </thead>
         <tbody>
             {% for resource in resources %}
-            <tr data-type="{{ resource.type }}" data-health="{{ resource.health }}" data-id="{{ resource.id }}">
+            <tr data-type="{{ resource.type }}" data-provider="{{ resource.cloud_provider }}" data-health="{{ resource.health }}" data-id="{{ resource.id }}">
                 <td class="mono" style="color:var(--text-dim);font-size:11px;">{{ loop.index }}</td>
                 <td>
                     <div class="resource-name">{{ resource.name }}</div>
                     <div class="resource-meta">ID: {{ resource.id }} <button class="copy-btn" onclick="event.stopPropagation();copyId('{{ resource.id }}',this)">copy</button></div>
                 </td>
                 <td><span class="badge" style="background:{{ resource.type_color }}15;color:{{ resource.type_color }};">{{ resource.type }}</span></td>
+                <td><span class="badge" style="background:{{ resource.provider_color }}15;color:{{ resource.provider_color }};">{{ resource.cloud_provider|upper }}</span></td>
                 <td class="mono">{{ resource.region }}</td>
                 <td class="mono" style="text-align:right;">
                     {% if resource.cost_per_hour == 0 %}
@@ -201,6 +230,7 @@
 {% block scripts %}
 <script>
 window.typeColors = {{ type_colors_json|safe }};
+window.providerColors = {{ provider_colors_json|safe }};
 (function() {
     var types = {};
     document.querySelectorAll('#resourceTable tbody tr').forEach(function(row) {
@@ -219,7 +249,12 @@ window.typeColors = {{ type_colors_json|safe }};
 
 function filterByType(type) {
     document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
-        r.style.display = !type || r.getAttribute('data-type') === type ? '' : 'none';
+        r.style.display = (!type || r.getAttribute('data-type') === type) && (!document.getElementById('providerFilter').value || r.getAttribute('data-provider') === document.getElementById('providerFilter').value) ? '' : 'none';
+    });
+}
+function filterByProvider(provider) {
+    document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
+        r.style.display = (!provider || r.getAttribute('data-provider') === provider) && (!document.getElementById('typeFilter').value || r.getAttribute('data-type') === document.getElementById('typeFilter').value) ? '' : 'none';
     });
 }
 
@@ -305,10 +340,11 @@ function refreshDashboard() {
         var running = 0;
         data.forEach(function(r, i) {
             running += r.status === 'running' ? 1 : 0;
-            html += '<tr data-type="' + r.type + '" data-health="' + (r.health || 'unknown') + '" data-id="' + r.id + '">' +
+            html += '<tr data-type="' + r.type + '" data-provider="' + (r.cloud_provider || 'azure') + '" data-health="' + (r.health || 'unknown') + '" data-id="' + r.id + '">' +
                 '<td class="mono" style="color:var(--text-dim);font-size:11px;">' + (i+1) + '</td>' +
                 '<td><div class="resource-name">' + r.name + '</div><div class="resource-meta">ID: ' + r.id + ' <button class="copy-btn" onclick="event.stopPropagation();copyId(\'' + r.id + '\',this)">copy</button></div></td>' +
                 '<td><span class="badge" style="background:' + (window.typeColors[r.type] || '#8892a6') + '15;color:' + (window.typeColors[r.type] || '#8892a6') + ';">' + r.type + '</span></td>' +
+                '<td><span class="badge" style="background:' + ((window.providerColors||{})[r.cloud_provider] || '#8892a6') + '15;color:' + ((window.providerColors||{})[r.cloud_provider] || '#8892a6') + ';">' + (r.cloud_provider ? r.cloud_provider.toUpperCase() : 'AZURE') + '</span></td>' +
                 '<td class="mono">' + (r.region || '') + '</td>' +
                 '<td class="mono" style="text-align:right;">' + (r.cost_per_hour === 0 ? '<span class="badge badge-neutral" style="font-size:11px;">Free</span>' : '<div>$' + (r.cost_per_hour * 730).toFixed(2) + '/mo</div><div style="font-size:10px;color:var(--text-dim);">$' + r.cost_per_hour.toFixed(4) + '/hr</div>') + '</td>' +
                 '<td class="mono" style="text-align:right;">' + (r.cost_per_hour === 0 ? '<span class="badge badge-neutral" style="font-size:11px;">Free</span>' : '<div>₹' + (r.cost_per_hour * 730 * 85).toFixed(0) + '/mo</div><div style="font-size:10px;color:var(--text-dim);">₹' + (r.cost_per_hour * 85).toFixed(2) + '/hr</div>') + '</td>' +
@@ -394,5 +430,34 @@ refreshDashboard = function() {
     _origRefresh();
     setTimeout(hideSkeletons, 800);
 };
+
+(function() {
+    fetch('/api/budget/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || d.status === 'not_set') {
+                document.getElementById('budgetDashStatus').textContent = 'Set budget in settings';
+                return;
+            }
+            var pct = Math.min(d.percentage, 100);
+            document.getElementById('budgetDashActual').textContent = '$' + d.actual.toFixed(0) + ' / $' + d.budget.toFixed(0);
+            document.getElementById('budgetDashFill').style.width = pct.toFixed(0) + '%';
+            document.getElementById('budgetDashLabel').textContent = '$' + d.budget.toFixed(0);
+            document.getElementById('budgetDashPct').textContent = pct.toFixed(0) + '%';
+
+            var das = document.getElementById('budgetDashStatus');
+            if (d.status === 'exceeded') {
+                das.innerHTML = '<span style="color:var(--danger);font-weight:600;">Exceeded by $' + (d.actual - d.budget).toFixed(0) + '</span>';
+                document.getElementById('budgetDashFill').style.background = 'var(--danger)';
+            } else if (d.status === 'warning') {
+                das.innerHTML = '<span style="color:var(--warning);font-weight:600;">$' + d.remaining.toFixed(0) + ' remaining</span>';
+                document.getElementById('budgetDashFill').style.background = 'var(--warning)';
+            } else {
+                das.innerHTML = '<span style="color:var(--success);font-weight:600;">$' + d.remaining.toFixed(0) + ' left</span>';
+                document.getElementById('budgetDashFill').style.background = 'var(--success)';
+            }
+        })
+        .catch(function() {});
+})();
 </script>
 {% endblock %}

@@ -169,7 +169,7 @@ function sortTable(col, th) {
     var dir = th.classList.contains('asc') ? -1 : 1;
     document.querySelectorAll('#resourceTable th.sortable').forEach(function(h) { h.classList.remove('asc','desc'); });
     th.classList.add(dir === 1 ? 'asc' : 'desc');
-    var colIdx = {name:2, type:3, region:4, cost:5, cost_inr:6, health:7, status:8, age:9};
+    var colIdx = {name:2, type:3, provider:4, region:5, cost:6, cost_inr:7, health:8, status:9, age:10};
     var idx = colIdx[col] || 2;
     var cache = rows.map(function(r) {
         var cell = r.querySelector('td:nth-child(' + idx + ')');

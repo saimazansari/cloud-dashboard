@@ -18,19 +18,20 @@ type User struct {
 }
 
 type Resource struct {
-	ID          int               `json:"id"`
-	UserID      int               `json:"user_id"`
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
-	Region      string            `json:"region"`
-	CostPerHour float64           `json:"cost_per_hour"`
-	Status      string            `json:"status"`
-	Tags        map[string]string `json:"tags"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
-	Sku         string            `json:"sku,omitempty"`
-	ResourceGroup string          `json:"resource_group,omitempty"`
-	SubscriptionID string         `json:"subscription_id,omitempty"`
+	ID             int               `json:"id"`
+	UserID         int               `json:"user_id"`
+	Name           string            `json:"name"`
+	Type           string            `json:"type"`
+	Region         string            `json:"region"`
+	CostPerHour    float64           `json:"cost_per_hour"`
+	Status         string            `json:"status"`
+	Tags           map[string]string `json:"tags"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+	Sku            string            `json:"sku,omitempty"`
+	ResourceGroup  string            `json:"resource_group,omitempty"`
+	SubscriptionID string            `json:"subscription_id,omitempty"`
+	CloudProvider  string            `json:"cloud_provider"`
 }
 
 type CostEntry struct {
@@ -38,10 +39,18 @@ type CostEntry struct {
 	TotalCost float64 `json:"total_cost"`
 }
 
+type CostByProvider struct {
+	Provider     string  `json:"provider"`
+	Count        int     `json:"count"`
+	TotalHourly  float64 `json:"total_hourly"`
+	TotalMonthly float64 `json:"total_monthly"`
+}
+
 type CostSummary struct {
 	TotalMonthly float64            `json:"total_monthly"`
 	TotalHourly  float64            `json:"total_hourly"`
 	ByType       []CostByType       `json:"by_type"`
+	ByProvider   []CostByProvider   `json:"by_provider"`
 	Resources    []ResourceWithCost `json:"resources"`
 }
 
@@ -258,6 +267,7 @@ func (s *Server) getCostSummary(ctx context.Context, userID int) (CostSummary, e
 
 	var summary CostSummary
 	grouped := make(map[string]*CostByType)
+	providerGrouped := make(map[string]*CostByProvider)
 
 	for _, resource := range resources {
 		monthly := resource.CostPerHour * 730
@@ -273,10 +283,25 @@ func (s *Server) getCostSummary(ctx context.Context, userID int) (CostSummary, e
 		grouped[resource.Type].Count++
 		grouped[resource.Type].TotalHourly += resource.CostPerHour
 		grouped[resource.Type].TotalMonthly += monthly
+
+		provider := resource.CloudProvider
+		if provider == "" {
+			provider = "azure"
+		}
+		if _, exists := providerGrouped[provider]; !exists {
+			providerGrouped[provider] = &CostByProvider{Provider: provider}
+		}
+		providerGrouped[provider].Count++
+		providerGrouped[provider].TotalHourly += resource.CostPerHour
+		providerGrouped[provider].TotalMonthly += monthly
 	}
 
 	for _, group := range grouped {
 		summary.ByType = append(summary.ByType, *group)
+	}
+
+	for _, group := range providerGrouped {
+		summary.ByProvider = append(summary.ByProvider, *group)
 	}
 
 	return summary, nil

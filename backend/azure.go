@@ -282,6 +282,7 @@ func (a *AzureManager) ListResources(ctx context.Context) ([]Resource, error) {
 			ResourceGroup:  ar.ResourceGroup,
 			SubscriptionID: a.subscriptionID,
 			Sku:            extractSku(ar.Sku, ar.Properties),
+			CloudProvider:  "azure",
 		}
 		r.Tags["_azure_id"] = ar.ID
 		r.Tags["_resource_group"] = ar.ResourceGroup
@@ -372,6 +373,7 @@ func (a *AzureManager) getResourceByARMID(ctx context.Context, armID string) (Re
 		ResourceGroup:  ar.ResourceGroup,
 		SubscriptionID: a.subscriptionID,
 		Sku:            extractSku(ar.Sku, ar.Properties),
+		CloudProvider:  "azure",
 	}
 	r.Tags["_azure_id"] = ar.ID
 	r.Tags["_resource_group"] = ar.ResourceGroup
@@ -482,6 +484,7 @@ func (a *AzureManager) queryCost(ctx context.Context) (*armcostmanagement.QueryC
 func (a *AzureManager) computeCostSummaryFallback(resources []Resource) CostSummary {
 	var summary CostSummary
 	byType := make(map[string]*CostByType)
+	byProvider := make(map[string]*CostByProvider)
 
 	for _, r := range resources {
 		monthly := r.CostPerHour * 730
@@ -497,10 +500,24 @@ func (a *AzureManager) computeCostSummaryFallback(resources []Resource) CostSumm
 		byType[r.Type].Count++
 		byType[r.Type].TotalHourly += r.CostPerHour
 		byType[r.Type].TotalMonthly += monthly
+
+		provider := r.CloudProvider
+		if provider == "" {
+			provider = "azure"
+		}
+		if _, ok := byProvider[provider]; !ok {
+			byProvider[provider] = &CostByProvider{Provider: provider}
+		}
+		byProvider[provider].Count++
+		byProvider[provider].TotalHourly += r.CostPerHour
+		byProvider[provider].TotalMonthly += monthly
 	}
 
 	for _, bt := range byType {
 		summary.ByType = append(summary.ByType, *bt)
+	}
+	for _, bp := range byProvider {
+		summary.ByProvider = append(summary.ByProvider, *bp)
 	}
 	return summary
 }
@@ -557,6 +574,26 @@ func (a *AzureManager) parseCostResult(result *armcostmanagement.QueryClientUsag
 				TotalMonthly: math.Round(monthly*100) / 100,
 			})
 		}
+	}
+
+	providerCount := make(map[string]int)
+	providerCost := make(map[string]float64)
+	for _, r := range resources {
+		p := r.CloudProvider
+		if p == "" {
+			p = "azure"
+		}
+		providerCount[p]++
+		providerCost[p] += r.CostPerHour
+	}
+	for p, count := range providerCount {
+		hourly := providerCost[p]
+		summary.ByProvider = append(summary.ByProvider, CostByProvider{
+			Provider:     p,
+			Count:        count,
+			TotalHourly:  math.Round(hourly*100) / 100,
+			TotalMonthly: math.Round(hourly*730*100) / 100,
+		})
 	}
 
 	if len(summary.ByType) == 0 {

@@ -159,6 +159,7 @@ func main() {
 	mux.HandleFunc("PUT /api/user/password", server.requireAuth(server.UpdatePassword))
 	mux.HandleFunc("GET /api/user/preferences", server.requireAuth(server.GetPreferences))
 	mux.HandleFunc("PUT /api/user/preferences", server.requireAuth(server.UpdatePreferences))
+	mux.HandleFunc("GET /api/budget/status", server.requireAuth(server.BudgetStatus))
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 

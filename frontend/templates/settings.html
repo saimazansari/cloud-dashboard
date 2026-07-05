@@ -19,6 +19,13 @@
             </select>
         </div>
         <div class="form-group">
+            <label>Monthly Budget (USD)</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="number" name="monthly_budget" id="prefBudget" min="0" step="10" placeholder="e.g. 500" style="width:160px;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('prefBudget').value='';savePreferences();">Clear</button>
+            </div>
+        </div>
+        <div class="form-group">
             <label>
                 <input type="checkbox" name="auto_refresh" id="prefAutoRefresh" value="1">
                 Auto-refresh dashboard every 30s
@@ -33,10 +40,17 @@
 {% block scripts %}
 <script>
 function savePreferences() {
+    var budgetInput = document.getElementById('prefBudget');
+    var budgetVal = parseFloat(budgetInput.value);
     var prefs = {
         page_size: parseInt(document.getElementById('prefPageSize').value) || 25,
         auto_refresh: document.getElementById('prefAutoRefresh').checked
     };
+    if (budgetInput.value.trim() !== '' && !isNaN(budgetVal) && budgetVal > 0) {
+        prefs.monthly_budget = budgetVal;
+    } else {
+        prefs.monthly_budget = null;
+    }
     var status = document.getElementById('prefStatus');
     status.textContent = 'Saving...';
     fetch('/api/user/preferences', {
@@ -60,6 +74,7 @@ fetch('/api/user/preferences')
         if (!prefs || prefs.error) return;
         if (prefs.page_size) document.getElementById('prefPageSize').value = prefs.page_size;
         if (prefs.auto_refresh) document.getElementById('prefAutoRefresh').checked = true;
+        if (prefs.monthly_budget) document.getElementById('prefBudget').value = prefs.monthly_budget;
     })
     .catch(function() {});
 </script>
