@@ -561,6 +561,30 @@
         .status-dot.terminated, .status-dot.failed { background:var(--danger); box-shadow:0 0 10px rgba(248,113,113,0.3); }
         .status-dot.running::after { content:''; position:absolute; inset:-2px; border-radius:50%; border:1px solid rgba(74,222,128,0.2); animation:ping 2s infinite; }
         @keyframes ping { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.5);opacity:0} }
+        .filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+        .filter-bar select {
+            padding:5px 26px 5px 10px; border-radius:8px; font-size:11px;
+            border:1px solid var(--input-border); background:var(--input-bg);
+            color:var(--text-muted); font-family:var(--font-sans); cursor:pointer;
+            outline:none; appearance:none; -webkit-appearance:none;
+            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0' fill='none' stroke='%238892a6' stroke-width='1.2'/%3E%3C/svg%3E");
+            background-repeat:no-repeat; background-position:right 7px center;
+            transition:border-color .15s; max-width:140px;
+        }
+        .filter-bar select:hover { border-color:var(--primary); }
+        .filter-bar select:focus { border-color:var(--primary); box-shadow:0 0 0 2px var(--focus-ring); }
+        .filter-bar select option { background:#0c121c; color:var(--text); }
+        .filter-chips { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; min-height:0; }
+        .filter-chip {
+            display:inline-flex; align-items:center; gap:4px;
+            padding:2px 8px; border-radius:6px; font-size:10px; font-weight:500;
+            background:var(--primary-glow); color:var(--primary); border:1px solid rgba(124,111,247,0.15);
+        }
+        .filter-chip .chip-remove {
+            cursor:pointer; font-size:13px; line-height:1; opacity:0.5;
+            transition:opacity .15s; margin-left:2px;
+        }
+        .filter-chip .chip-remove:hover { opacity:1; }
         .type-filter select {
             padding:6px 12px; border-radius:8px; font-size:12px;
             border:1px solid var(--input-border); background:var(--input-bg);

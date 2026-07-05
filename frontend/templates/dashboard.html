@@ -119,7 +119,7 @@
         <div class="actions">
             <input class="filter-input" id="filterInput"
                    placeholder="Search resources..."
-                   oninput="filterTable('filterInput','resourceTable')">
+                   oninput="filterTable(this.value)">
             <button class="btn btn-outline btn-sm" onclick="batchAction('stop')">Stop All</button>
             <button class="btn btn-outline btn-sm" onclick="batchAction('start')">Start All</button>
             <a href="/export/csv/resources" class="btn btn-outline">CSV</a>
@@ -135,10 +135,14 @@
         <div class="skeleton skeleton-row" style="width:40%;margin-bottom:12px;"></div>
         <div class="skeleton skeleton-card" style="height:200px;"></div>
     </div>
-    <div class="type-filter">
-        <select id="typeFilter" onchange="filterByType(this.value)"><option value="">All Types</option></select>
-        <select id="providerFilter" onchange="filterByProvider(this.value)" style="margin-left:8px;"><option value="">All Providers</option><option value="azure">AZURE</option><option value="aws">AWS</option><option value="gcp">GCP</option></select>
+    <div class="filter-bar" id="filterBar">
+        <select id="filterType" onchange="applyFilters()"><option value="">Type</option></select>
+        <select id="filterProvider" onchange="applyFilters()"><option value="">Provider</option></select>
+        <select id="filterRegion" onchange="applyFilters()"><option value="">Region</option></select>
+        <select id="filterStatus" onchange="applyFilters()"><option value="">Status</option></select>
+        <button class="btn btn-sm btn-outline" id="clearFiltersBtn" onclick="clearFilters()" style="display:none;font-size:11px;">Clear</button>
     </div>
+    <div class="filter-chips" id="filterChips"></div>
     <div class="table-scroll"><table id="resourceTable">
         <thead>
             <tr>
@@ -157,7 +161,7 @@
         </thead>
         <tbody>
             {% for resource in resources %}
-            <tr data-type="{{ resource.type }}" data-provider="{{ resource.cloud_provider }}" data-health="{{ resource.health }}" data-id="{{ resource.id }}">
+            <tr data-type="{{ resource.type }}" data-provider="{{ resource.cloud_provider }}" data-region="{{ resource.region }}" data-status="{{ resource.status }}" data-health="{{ resource.health }}" data-id="{{ resource.id }}">
                 <td class="mono" style="color:var(--text-dim);font-size:11px;">{{ loop.index }}</td>
                 <td>
                     <div class="resource-name">{{ resource.name }}</div>
@@ -231,32 +235,103 @@
 <script>
 window.typeColors = {{ type_colors_json|safe }};
 window.providerColors = {{ provider_colors_json|safe }};
-(function() {
-    var types = {};
-    document.querySelectorAll('#resourceTable tbody tr').forEach(function(row) {
-        types[row.getAttribute('data-type')] = true;
+function populateFilter(id, attr) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    var vals = {};
+    document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
+        var v = (r.getAttribute(attr) || '').trim();
+        if (v) vals[v] = true;
     });
-    var sel = document.getElementById('typeFilter');
-    if (!sel || Object.keys(types).length < 2) { if (sel) sel.style.display = 'none'; return; }
-
-    Object.keys(types).sort().forEach(function(type) {
+    var keys = Object.keys(vals).sort();
+    if (keys.length < 2) { sel.style.display = 'none'; return; }
+    sel.style.display = '';
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">' + sel.options[0].text + '</option>';
+    keys.forEach(function(k) {
         var opt = document.createElement('option');
-        opt.value = type;
-        opt.textContent = type;
+        opt.value = k;
+        opt.textContent = k;
         sel.appendChild(opt);
     });
-})();
+    sel.value = cur;
+}
 
-function filterByType(type) {
-    document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
-        r.style.display = (!type || r.getAttribute('data-type') === type) && (!document.getElementById('providerFilter').value || r.getAttribute('data-provider') === document.getElementById('providerFilter').value) ? '' : 'none';
+function getActiveFilters() {
+    var f = {};
+    ['filterType','filterProvider','filterRegion','filterStatus'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && el.value) f[id.replace('filter','').toLowerCase()] = el.value;
     });
+    var q = document.getElementById('filterInput');
+    if (q && q.value.trim()) f.search = q.value.trim().toLowerCase();
+    return f;
 }
-function filterByProvider(provider) {
-    document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
-        r.style.display = (!provider || r.getAttribute('data-provider') === provider) && (!document.getElementById('typeFilter').value || r.getAttribute('data-type') === document.getElementById('typeFilter').value) ? '' : 'none';
+
+function applyFilters() {
+    var filters = getActiveFilters();
+    var haveFilters = Object.keys(filters).length > 0;
+    document.getElementById('clearFiltersBtn').style.display = haveFilters ? '' : 'none';
+    var chips = document.getElementById('filterChips');
+    chips.innerHTML = '';
+    var labels = {type:'Type', provider:'Provider', region:'Region', status:'Status', search:'Search'};
+    Object.keys(filters).forEach(function(k) {
+        if (k === 'search') return;
+        var chip = document.createElement('span');
+        chip.className = 'filter-chip';
+        chip.innerHTML = labels[k] + ': ' + filters[k] + ' <span class="chip-remove" data-filter="' + k + '">&times;</span>';
+        chip.querySelector('.chip-remove').onclick = function() {
+            var el = document.getElementById('filter' + k.charAt(0).toUpperCase() + k.slice(1));
+            if (el) { el.value = ''; applyFilters(); }
+        };
+        chips.appendChild(chip);
     });
+    if (filters.search) {
+        var chip = document.createElement('span');
+        chip.className = 'filter-chip';
+        chip.innerHTML = 'Search: "' + filters.search + '" <span class="chip-remove" data-filter="search">&times;</span>';
+        chip.querySelector('.chip-remove').onclick = function() {
+            var el = document.getElementById('filterInput');
+            if (el) { el.value = ''; applyFilters(); }
+        };
+        chips.appendChild(chip);
+    }
+
+    var searchQ = filters.search || '';
+    delete filters.search;
+
+    document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
+        var show = true;
+        if (filters.type && r.getAttribute('data-type') !== filters.type) show = false;
+        if (show && filters.provider && r.getAttribute('data-provider') !== filters.provider) show = false;
+        if (show && filters.region && r.getAttribute('data-region') !== filters.region) show = false;
+        if (show && filters.status && r.getAttribute('data-status') !== filters.status) show = false;
+        if (show && searchQ && !r.textContent.toLowerCase().includes(searchQ)) show = false;
+        r.style.display = show ? '' : 'none';
+    });
+
+    if (!searchQ) applyPagination();
+    else document.getElementById('pagination').innerHTML = '';
 }
+
+function clearFilters() {
+    ['filterType','filterProvider','filterRegion','filterStatus'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    var q = document.getElementById('filterInput');
+    if (q) q.value = '';
+    applyFilters();
+    applyPagination();
+}
+
+(function() {
+    ['filterType','filterProvider','filterRegion','filterStatus'].forEach(function(id) {
+        var attr = id.replace('filter','').toLowerCase();
+        var attrMap = {type:'data-type', provider:'data-provider', region:'data-region', status:'data-status'};
+        populateFilter(id, attrMap[attr]);
+    });
+})();
 
 function openPanel(id) {
     fetch('/api/resources/' + id)
@@ -340,7 +415,7 @@ function refreshDashboard() {
         var running = 0;
         data.forEach(function(r, i) {
             running += r.status === 'running' ? 1 : 0;
-            html += '<tr data-type="' + r.type + '" data-provider="' + (r.cloud_provider || 'azure') + '" data-health="' + (r.health || 'unknown') + '" data-id="' + r.id + '">' +
+            html += '<tr data-type="' + r.type + '" data-provider="' + (r.cloud_provider || 'azure') + '" data-region="' + (r.region || '') + '" data-status="' + r.status + '" data-health="' + (r.health || 'unknown') + '" data-id="' + r.id + '">' +
                 '<td class="mono" style="color:var(--text-dim);font-size:11px;">' + (i+1) + '</td>' +
                 '<td><div class="resource-name">' + r.name + '</div><div class="resource-meta">ID: ' + r.id + ' <button class="copy-btn" onclick="event.stopPropagation();copyId(\'' + r.id + '\',this)">copy</button></div></td>' +
                 '<td><span class="badge" style="background:' + (window.typeColors[r.type] || '#8892a6') + '15;color:' + (window.typeColors[r.type] || '#8892a6') + ';">' + r.type + '</span></td>' +
@@ -364,20 +439,26 @@ function refreshDashboard() {
 function startAutoRefresh() {
     setInterval(function() {
         refreshDashboard();
-        var typeSelect = document.getElementById('typeFilter');
-        if (typeSelect) {
-            var types = {};
+        ['filterType','filterProvider','filterRegion','filterStatus'].forEach(function(id) {
+            var sel = document.getElementById(id);
+            if (!sel) return;
+            var attrMap = {filterType:'data-type', filterProvider:'data-provider', filterRegion:'data-region', filterStatus:'data-status'};
+            var vals = {};
             document.querySelectorAll('#resourceTable tbody tr').forEach(function(r) {
-                types[r.getAttribute('data-type')] = true;
+                var v = (r.getAttribute(attrMap[id]) || '').trim();
+                if (v) vals[v] = true;
             });
-            var cur = typeSelect.value;
-            typeSelect.innerHTML = '<option value="">All Types</option>';
-            Object.keys(types).sort().forEach(function(t) {
-                typeSelect.innerHTML += '<option value="' + t + '">' + t + '</option>';
+            var cur = sel.value;
+            sel.innerHTML = '<option value="">' + (sel.options[0] ? sel.options[0].text : id.replace('filter','')) + '</option>';
+            Object.keys(vals).sort().forEach(function(k) {
+                var opt = document.createElement('option');
+                opt.value = k;
+                opt.textContent = k;
+                sel.appendChild(opt);
             });
-            typeSelect.value = cur;
-            filterByType(cur);
-        }
+            sel.style.display = Object.keys(vals).length < 2 ? 'none' : '';
+            sel.value = cur;
+        });
         var el = document.getElementById('refreshTime');
         if (el) el.textContent = '0s ago';
         fetch('/api/cost-summary').then(function(r) { return r.json(); }).then(function(c) {

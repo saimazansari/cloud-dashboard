@@ -27,18 +27,22 @@ function switchSubscription(id) {
     }).then(function() { location.reload(); }).catch(function() {});
 }
 
-function filterTable(inputId, tableId) {
+function filterTable(value) {
     if (_filterTimer) clearTimeout(_filterTimer);
     _filterTimer = setTimeout(function() {
-        var query = document.getElementById(inputId).value.toLowerCase();
-        var rows = document.getElementById(tableId).querySelectorAll('tbody tr');
+        if (typeof applyFilters === 'function') {
+            applyFilters();
+            return;
+        }
+        var query = value.toLowerCase();
+        var rows = document.querySelectorAll('#resourceTable tbody tr');
         if (query) {
             currentPage = 1;
             rows.forEach(function(row) {
-                var text = row.textContent.toLowerCase();
-                row.style.display = text.includes(query) ? '' : 'none';
+                row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
             });
-            document.getElementById('pagination').innerHTML = '';
+            var pag = document.getElementById('pagination');
+            if (pag) pag.innerHTML = '';
         } else {
             rows.forEach(function(r) { r.style.display = ''; });
             applyPagination();
