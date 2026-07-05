@@ -20,6 +20,7 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/clouddashboard?sslmode=disable"
+      AZURE_KEY_VAULT_URL: "${AZURE_KEY_VAULT_URL}"
       AZURE_SUBSCRIPTION_ID: "${AZURE_SUBSCRIPTION_ID}"
       AZURE_TENANT_ID: "${AZURE_TENANT_ID}"
       AZURE_CLIENT_ID: "${AZURE_CLIENT_ID}"
@@ -38,7 +39,7 @@ services:
     build: ./frontend
     environment:
       BACKEND_URL: "http://backend:8080"
-      SECRET_KEY: "${SECRET_KEY:-replace-with-a-random-secret}"
+      AZURE_KEY_VAULT_URL: "${AZURE_KEY_VAULT_URL}"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
       GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
       GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"

@@ -9,14 +9,26 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY")
-if not app.secret_key:
-    raise RuntimeError("SECRET_KEY environment variable is required")
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 if not app.debug:
     app.config["SESSION_COOKIE_SECURE"] = True
+
+kv_url = os.environ.get("AZURE_KEY_VAULT_URL")
+if kv_url:
+    try:
+        from azure.identity import DefaultAzureCredential
+        from azure.keyvault.secrets import SecretClient
+        credential = DefaultAzureCredential()
+        client = SecretClient(vault_url=kv_url, credential=credential)
+        app.secret_key = client.get_secret("flask-secret-key").value
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch flask-secret-key from Key Vault: {e}")
+else:
+    app.secret_key = os.environ.get("SECRET_KEY")
+    if not app.secret_key:
+        raise RuntimeError("SECRET_KEY env var or AZURE_KEY_VAULT_URL is required")
 
 
 @app.before_request

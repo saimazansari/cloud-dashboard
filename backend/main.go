@@ -10,11 +10,14 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -92,8 +95,17 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	if kvURL := os.Getenv("AZURE_KEY_VAULT_URL"); kvURL != "" {
+		pw, err := fetchSecret(ctx, kvURL, "db-password")
+		if err != nil {
+			log.Fatalf("key vault: %v", err)
+		}
+		databaseURL = injectDBPassword(databaseURL, pw)
+		log.Println("database password sourced from Azure Key Vault")
+	}
 
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -392,4 +404,33 @@ func exchangeGitHubCode(ctx context.Context, code, clientID, clientSecret string
 	}
 
 	return ghID, username, email, nil
+}
+
+func fetchSecret(ctx context.Context, vaultURL, name string) (string, error) {
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		return "", fmt.Errorf("credential: %w", err)
+	}
+	client, err := azsecrets.NewClient(vaultURL, cred, nil)
+	if err != nil {
+		return "", fmt.Errorf("client: %w", err)
+	}
+	resp, err := client.GetSecret(ctx, name, "", nil)
+	if err != nil {
+		return "", fmt.Errorf("get secret %q: %w", name, err)
+	}
+	if resp.Value == nil {
+		return "", fmt.Errorf("secret %q is nil", name)
+	}
+	return *resp.Value, nil
+}
+
+func injectDBPassword(rawURL, password string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	user := u.User.Username()
+	u.User = url.UserPassword(user, password)
+	return u.String()
 }
