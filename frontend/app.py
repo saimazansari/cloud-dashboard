@@ -48,7 +48,7 @@ LAYOUT = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CloudDash</title>
+    <title>Cloudash</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c6ff7' stroke-width='2'%3E%3Cpath d='M22 12h-4l-3 9L9 3l-3 9H2'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     {% if google_client_id %}<link rel="preconnect" href="https://accounts.google.com">{% endif %}
@@ -678,7 +678,7 @@ LAYOUT = """
     <nav class="navbar">
         <div class="navbar-brand">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            <span>CloudDash</span>
+            <span>Cloudash</span>
         </div>
         <div class="navbar-nav">
             <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
@@ -1706,7 +1706,7 @@ LOGIN_PAGE = """
 <div class="card auth-card" id="loginCard">
     <div class="auth-brand">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#7c6ff7" stroke-width="1.5" style="filter:drop-shadow(0 0 12px rgba(124,111,247,0.3));"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        <h1>CloudDash</h1>
+        <h1>Cloudash</h1>
         <p style="color:var(--text-muted);font-size:14px;margin-top:6px;font-weight:400;">Sign in to your dashboard</p>
     </div>
     {% if error %}<div class="error" id="loginError">{{ error }}</div>{% endif %}
@@ -1885,7 +1885,7 @@ REGISTER_PAGE = """
 <div class="card auth-card">
     <div class="auth-brand">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#7c6ff7" stroke-width="1.5" style="filter:drop-shadow(0 0 12px rgba(124,111,247,0.3));"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        <h1>CloudDash</h1>
+        <h1>Cloudash</h1>
         <p style="color:var(--text-muted);font-size:14px;margin-top:6px;font-weight:400;">Create your account</p>
     </div>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}

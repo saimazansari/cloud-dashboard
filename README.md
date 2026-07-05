@@ -1,4 +1,4 @@
-# CloudDash — Cloud Cost & Infrastructure Dashboard
+# Cloudash — Cloud Cost & Infrastructure Dashboard
 
 A full-stack web application for managing and visualizing Azure infrastructure resources, costs, and VM stop/start actions. Features a modern glassmorphism UI with dark/light theme.
 
