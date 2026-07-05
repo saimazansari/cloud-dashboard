@@ -11,23 +11,34 @@ on:
         description: Run frontend checks
         type: boolean
         default: true
+      infra:
+        description: Run infra checks (Docker, Terraform, nginx)
+        type: boolean
+        default: true
       security:
         description: Run security audit
         type: boolean
         default: false
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   backend:
-    name: Backend (Go)
+    name: Backend
     if: ${{ inputs.backend }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: ./backend
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -48,17 +59,23 @@ jobs:
       - name: Test
         run: go test ./... -v
 
+      - name: Check for spelling errors
+        uses: codespell-project/actions-codespell@v2
+        with:
+          path: backend/
+          check_filenames: false
+
   frontend:
-    name: Frontend (Python + Flask)
+    name: Frontend
     if: ${{ inputs.frontend }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: ./frontend
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -74,20 +91,54 @@ jobs:
       - name: Test
         run: python -m pytest test_app.py -v
 
-      - name: Check imports
+      - name: Load check
         run: python -c "from app import app; print('Flask app loaded OK')"
+
+      - name: Check for spelling errors
+        uses: codespell-project/actions-codespell@v2
+        with:
+          path: frontend/
+          check_filenames: false
+
+  infra:
+    name: Infra (Docker + Terraform + nginx)
+    if: ${{ inputs.infra }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate backend Dockerfile
+        run: docker build -t cloud-dashboard-backend backend/ --quiet
+
+      - name: Validate frontend Dockerfile
+        run: docker build -t cloud-dashboard-frontend frontend/ --quiet
+
+      - name: Validate nginx config syntax
+        run: docker run --rm -v $PWD/nginx:/etc/nginx/conf.d nginx:alpine nginx -t
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10"
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: ./terraform
+        continue-on-error: true
 
   security:
     name: Security Audit
     if: ${{ inputs.security }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          fetch-depth: 0
 
       - name: Run gitleaks (secret scanning)
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
