@@ -48,17 +48,18 @@
     </nav>
     <main class="main">
         <div class="content">
-            {% block content %}{% endblock %}
-        </div>
-    </main>
-</div>
-<div class="toast-container" id="toastContainer"></div>
 {% else %}
 <div class="auth-wrap">
     <div style="text-align:right;margin-bottom:8px;">
         <button class="theme-toggle" id="themeToggle" onclick="var h=document.documentElement;if(h.getAttribute('data-theme')==='light'){h.removeAttribute('data-theme');try{localStorage.setItem('theme','dark')}catch(e){}this.textContent='🌙'}else{h.setAttribute('data-theme','light');try{localStorage.setItem('theme','light')}catch(e){}this.textContent='☀️'}" title="Toggle theme">🌙</button>
     </div>
-    {% block content %}{% endblock %}
+{% endif %}
+{% block page_content %}{% endblock %}
+{% if session.get('user_id') %}
+    </div></main>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+{% else %}
 </div>
 {% endif %}
 <script src="/static/js/script.js?v=2"></script>

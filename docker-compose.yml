@@ -39,6 +39,7 @@ services:
     build: ./frontend
     environment:
       BACKEND_URL: "http://backend:8080"
+      SECRET_KEY: "${SECRET_KEY}"
       AZURE_KEY_VAULT_URL: "${AZURE_KEY_VAULT_URL}"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
       GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
