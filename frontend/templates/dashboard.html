@@ -32,6 +32,67 @@
     </div>
 </div>
 <div class="grid-6">
+    <div class="stat-card g1">
+        <div class="stat-icon">🖥️</div>
+        <div class="stat-value"><span class="countup" data-target="{{ stats.total }}">{{ stats.total }}</span></div>
+        <div class="stat-label">Total Resources</div>
+    </div>
+    <div class="stat-card g2">
+        <div class="stat-icon">❤️</div>
+        <div class="stat-value"><span class="countup" data-target="{{ health.healthy }}">{{ health.healthy }}</span></div>
+        <div class="stat-label">Healthy</div>
+        <div class="stat-sub"><span class="countup" data-target="{{ health.degraded }}">{{ health.degraded }}</span> degraded &middot; <span class="countup" data-target="{{ health.offline }}">{{ health.offline }}</span> offline</div>
+    </div>
+    <div class="stat-card g3">
+        <div class="stat-icon">$</div>
+        <div class="stat-value countup" data-target="{{ stats.monthly_cost }}" data-prefix="$" data-decimals="0">${{ stats.monthly_cost|int }}</div>
+        <div class="stat-label">Est. Monthly Cost (USD)</div>
+        <div class="stat-sub">${{ "%.2f"|format(stats.hourly_cost) }}/hr</div>
+    </div>
+    <div class="stat-card g4">
+        <div class="stat-icon">₹</div>
+        <div class="stat-value countup" data-target="{{ stats.monthly_cost_inr }}" data-prefix="₹" data-decimals="0">₹{{ stats.monthly_cost_inr|int }}</div>
+        <div class="stat-label">Est. Monthly Cost (INR)</div>
+        <div class="stat-sub">₹{{ "%.2f"|format(stats.hourly_cost_inr) }}/hr</div>
+    </div>
+    <div class="stat-card g5">
+        <div class="stat-icon">📊</div>
+        <div class="stat-value countup" data-target="{{ stats.cost_sofar }}" data-prefix="$" data-decimals="0">${{ stats.cost_sofar|int }}</div>
+        <div class="stat-label">Cost This Month (USD)</div>
+        <div class="stat-sub">${{ "%.2f"|format(stats.hourly_cost) }}/hr &middot; {{ "%d"|format(hours_sofar) }}h elapsed</div>
+    </div>
+    <div class="stat-card g6">
+        <div class="stat-icon">₹</div>
+        <div class="stat-value countup" data-target="{{ stats.cost_sofar_inr }}" data-prefix="₹" data-decimals="0">₹{{ stats.cost_sofar_inr|int }}</div>
+        <div class="stat-label">Cost This Month (INR)</div>
+        <div class="stat-sub">₹{{ "%.2f"|format(stats.hourly_cost_inr) }}/hr &middot; ~₹{{ stats.monthly_cost_inr|int }}/mo est.</div>
+    </div>
+</div>
+
+<div class="budget-row" id="budgetRow">
+    <div class="card" style="padding:14px 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div>
+                <div style="font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Budget vs Actual</div>
+                <div id="budgetDashActual" style="font-size:20px;font-weight:700;font-family:var(--font-mono);">—</div>
+            </div>
+            <div style="flex:1;min-width:120px;">
+                <div class="budget-bar" style="height:8px;">
+                    <div class="budget-fill" id="budgetDashFill" style="width:0%;height:100%;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--font-mono);">
+                    <span>$0</span>
+                    <span id="budgetDashLabel">—</span>
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div id="budgetDashPct" style="font-size:18px;font-weight:700;font-family:var(--font-mono);color:var(--text-muted);">—</div>
+                <div id="budgetDashStatus" style="font-size:11px;color:var(--text-dim);">No budget set</div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
 
 <div class="card">
     <div class="section-header">
@@ -450,5 +511,34 @@ refreshDashboard = function() {
     _origRefresh();
     setTimeout(hideSkeletons, 800);
 };
+
+(function() {
+    fetch('/api/budget/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || d.status === 'not_set') {
+                document.getElementById('budgetDashStatus').textContent = 'Set budget in settings';
+                return;
+            }
+            var pct = Math.min(d.percentage, 100);
+            document.getElementById('budgetDashActual').textContent = '$' + d.actual.toFixed(0) + ' / $' + d.budget.toFixed(0);
+            document.getElementById('budgetDashFill').style.width = pct.toFixed(0) + '%';
+            document.getElementById('budgetDashLabel').textContent = '$' + d.budget.toFixed(0);
+            document.getElementById('budgetDashPct').textContent = pct.toFixed(0) + '%';
+
+            var das = document.getElementById('budgetDashStatus');
+            if (d.status === 'exceeded') {
+                das.innerHTML = '<span style="color:var(--danger);font-weight:600;">Exceeded by $' + (d.actual - d.budget).toFixed(0) + '</span>';
+                document.getElementById('budgetDashFill').style.background = 'var(--danger)';
+            } else if (d.status === 'warning') {
+                das.innerHTML = '<span style="color:var(--warning);font-weight:600;">$' + d.remaining.toFixed(0) + ' remaining</span>';
+                document.getElementById('budgetDashFill').style.background = 'var(--warning)';
+            } else {
+                das.innerHTML = '<span style="color:var(--success);font-weight:600;">$' + d.remaining.toFixed(0) + ' left</span>';
+                document.getElementById('budgetDashFill').style.background = 'var(--success)';
+            }
+        })
+        .catch(function() {});
+})();
 </script>
 {% endblock %}
