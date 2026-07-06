@@ -12,8 +12,12 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-if not app.debug:
-    app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SECURE_PROXY_SSL_HEADER"] = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+@app.before_request
+def adjust_session_secure():
+    app.config["SESSION_COOKIE_SECURE"] = request.is_secure
 
 kv_url = os.environ.get("AZURE_KEY_VAULT_URL")
 if kv_url:
@@ -91,15 +95,16 @@ HOURS_PER_MONTH = 730
 USD_TO_INR = 85.0
 
 
-def api_request(method, path, data=None):
+def api_request(method, path, data=None, auth_data=None):
     headers = {}
     if data is not None:
         headers["Content-Type"] = "application/json"
-    if session.get("user_id") and session.get("token"):
-        headers["X-User-ID"] = str(session["user_id"])
-        headers["X-Auth-Token"] = session["token"]
-    if session.get("subscription_id"):
-        headers["X-Subscription-ID"] = session["subscription_id"]
+    auth = auth_data or session
+    if auth.get("user_id") and auth.get("token"):
+        headers["X-User-ID"] = str(auth["user_id"])
+        headers["X-Auth-Token"] = auth["token"]
+    if auth.get("subscription_id"):
+        headers["X-Subscription-ID"] = auth["subscription_id"]
     try:
         timeout = 120 if path == "/api/cost-summary" else 120 if path.endswith("/stop") or path.endswith("/start") else 30
         response = requests.request(method, f"{BACKEND_URL}{path}", json=data, headers=headers, timeout=timeout)
@@ -113,9 +118,9 @@ def api_request(method, path, data=None):
     except Exception as e:
         return {"error": str(e)} if method == "GET" else ({"error": str(e)}, 500)
 
-api_get = lambda p: api_request("GET", p)
-api_post = lambda p, d: api_request("POST", p, d)
-api_put = lambda p, d: api_request("PUT", p, d)
+api_get = lambda p, auth_data=None: api_request("GET", p, auth_data=auth_data)
+api_post = lambda p, d, auth_data=None: api_request("POST", p, d, auth_data=auth_data)
+api_put = lambda p, d, auth_data=None: api_request("PUT", p, d, auth_data=auth_data)
 
 
 @app.context_processor
@@ -156,10 +161,12 @@ def dashboard():
     error = None
     resources = []
 
+    auth_data = dict(session)
+
     with ThreadPoolExecutor(max_workers=3) as pool:
-        fut_resources = pool.submit(api_get, "/api/resources")
-        fut_cost = pool.submit(api_get, "/api/cost-summary")
-        fut_subs = pool.submit(api_get, "/api/subscriptions")
+        fut_resources = pool.submit(api_get, "/api/resources", auth_data=auth_data)
+        fut_cost = pool.submit(api_get, "/api/cost-summary", auth_data=auth_data)
+        fut_subs = pool.submit(api_get, "/api/subscriptions", auth_data=auth_data)
         data = fut_resources.result()
         cost_data = fut_cost.result()
         sub_data = fut_subs.result()
