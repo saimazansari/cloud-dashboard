@@ -328,22 +328,3 @@ function initCharts() {
         });
     });
 })();
-(function() {
-    document.querySelectorAll('.stat-card, .card').forEach(function(card) {
-        card.addEventListener('mousemove', function(e) {
-            var rect = card.getBoundingClientRect();
-            var x = e.clientX - rect.left;
-            var y = e.clientY - rect.top;
-            var cx = rect.width / 2;
-            var cy = rect.height / 2;
-            var rotX = ((y - cy) / cy) * -3;
-            var rotY = ((x - cx) / cx) * 3;
-            card.style.setProperty('--rotX', rotX + 'deg');
-            card.style.setProperty('--rotY', rotY + 'deg');
-            card.style.transform = 'translateY(-3px) perspective(600px) rotateX(' + rotX + 'deg) rotateY(' + rotY + 'deg)';
-        });
-        card.addEventListener('mouseleave', function() {
-            card.style.transform = '';
-        });
-    });
-})();

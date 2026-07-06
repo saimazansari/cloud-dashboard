@@ -94,18 +94,6 @@
 </div>
 </div>
 
-<div class="chart-row" id="chartRow" style="display:none;">
-    <div class="chart-box">
-        <h2>Resource Types</h2>
-        <canvas id="typeChart"></canvas>
-        <div class="donut-center" id="donutTotal"></div>
-    </div>
-    <div class="chart-box">
-        <h2>Cost Trend (30d)</h2>
-        <canvas id="costSparkline" style="height:160px;"></canvas>
-    </div>
-</div>
-
 <div class="card">
     <div class="section-header">
         <div>
@@ -389,7 +377,6 @@ function closePanel() {
 
 document.addEventListener('DOMContentLoaded', function() {
     applyPagination();
-    initCharts();
     document.getElementById('resourceTable').addEventListener('click', function(e) {
         if (e.target.closest('button') || e.target.closest('a')) return;
         var row = e.target.closest('tr[data-id]');
