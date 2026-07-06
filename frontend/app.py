@@ -217,6 +217,13 @@ def dashboard():
         stats["monthly_cost_inr"] = round(hourly_total * HOURS_PER_MONTH * USD_TO_INR, 2)
         type_colors_json = json.dumps({t: type_color(t) for t in groups.keys()})
 
+    filter_data_json = json.dumps({
+        "types": sorted(set(r["type"] for r in resources)),
+        "providers": sorted(set(r.get("cloud_provider", "azure") for r in resources)),
+        "regions": sorted(set(r.get("region", "") for r in resources if r.get("region"))),
+        "statuses": sorted(set(r["status"] for r in resources)),
+    }) if resources else "{}"
+
     provider_colors_json = json.dumps(PROVIDER_COLORS)
 
     if isinstance(cost_data, dict) and "error" not in cost_data and cost_data.get("total_monthly"):
@@ -246,6 +253,7 @@ def dashboard():
         health=health,
         type_colors_json=type_colors_json,
         provider_colors_json=provider_colors_json,
+        filter_data_json=filter_data_json,
         hours_sofar=int(hours_so_far),
         subscriptions=subscriptions,
     )

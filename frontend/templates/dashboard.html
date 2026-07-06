@@ -327,34 +327,23 @@ function clearFilters() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    fetch('/api/resources').then(function(r){return r.json()}).then(function(data){
-        if (!Array.isArray(data) || !data.length) return;
-        var fields = {filterType:'type', filterProvider:'cloud_provider', filterRegion:'region', filterStatus:'status'};
-        var attrMap = {filterType:'data-type', filterProvider:'data-provider', filterRegion:'data-region', filterStatus:'data-status'};
-        var valueSets = {};
-        Object.keys(fields).forEach(function(id){ valueSets[id] = {}; });
-        data.forEach(function(res){
-            Object.keys(fields).forEach(function(id){
-                var v = (res[fields[id]]||'').toString().trim();
-                if (v) valueSets[id][v] = true;
-            });
+    var filterData = {{ filter_data_json|safe }};
+    var map = {filterType:'types', filterProvider:'providers', filterRegion:'regions', filterStatus:'statuses'};
+    Object.keys(map).forEach(function(id){
+        var sel = document.getElementById(id);
+        if (!sel) return;
+        var vals = filterData[map[id]];
+        if (!vals || vals.length < 1) { sel.style.display = 'none'; return; }
+        sel.style.display = '';
+        var cur = sel.value;
+        sel.innerHTML = '<option value="">' + (sel.options[0] ? sel.options[0].text : id.replace('filter','')) + '</option>';
+        vals.forEach(function(k) {
+            var opt = document.createElement('option');
+            opt.value = k; opt.textContent = k;
+            sel.appendChild(opt);
         });
-        Object.keys(fields).forEach(function(id){
-            var sel = document.getElementById(id);
-            if (!sel) return;
-            var vals = Object.keys(valueSets[id]).sort();
-            if (vals.length < 1) { sel.style.display = 'none'; return; }
-            sel.style.display = '';
-            var cur = sel.value;
-            sel.innerHTML = '<option value="">' + (sel.options[0] ? sel.options[0].text : id.replace('filter','')) + '</option>';
-            vals.forEach(function(k) {
-                var opt = document.createElement('option');
-                opt.value = k; opt.textContent = k;
-                sel.appendChild(opt);
-            });
-            sel.value = cur;
-        });
-    }).catch(function(){});
+        sel.value = cur;
+    });
 });
 
 function openPanel(id) {
