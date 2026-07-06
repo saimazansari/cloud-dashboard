@@ -244,10 +244,10 @@ function populateFilter(id, attr) {
         if (v) vals[v] = true;
     });
     var keys = Object.keys(vals).sort();
-    if (keys.length < 2) { sel.style.display = 'none'; return; }
+    if (keys.length < 1) { sel.style.display = 'none'; return; }
     sel.style.display = '';
     var cur = sel.value;
-    sel.innerHTML = '<option value="">' + sel.options[0].text + '</option>';
+    sel.innerHTML = '<option value="">' + (sel.options[0] ? sel.options[0].text : id.replace('filter','')) + '</option>';
     keys.forEach(function(k) {
         var opt = document.createElement('option');
         opt.value = k;
@@ -271,7 +271,8 @@ function getActiveFilters() {
 function applyFilters() {
     var filters = getActiveFilters();
     var haveFilters = Object.keys(filters).length > 0;
-    document.getElementById('clearFiltersBtn').style.display = haveFilters ? '' : 'none';
+    var cfb = document.getElementById('clearFiltersBtn');
+    if (cfb) cfb.style.display = haveFilters ? '' : 'none';
     var chips = document.getElementById('filterChips');
     chips.innerHTML = '';
     var labels = {type:'Type', provider:'Provider', region:'Region', status:'Status', search:'Search'};
@@ -325,13 +326,13 @@ function clearFilters() {
     applyPagination();
 }
 
-(function() {
+document.addEventListener('DOMContentLoaded', function() {
     ['filterType','filterProvider','filterRegion','filterStatus'].forEach(function(id) {
         var attr = id.replace('filter','').toLowerCase();
         var attrMap = {type:'data-type', provider:'data-provider', region:'data-region', status:'data-status'};
         populateFilter(id, attrMap[attr]);
     });
-})();
+});
 
 function openPanel(id) {
     fetch('/api/resources/' + id)
