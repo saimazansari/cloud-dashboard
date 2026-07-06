@@ -3,6 +3,15 @@ var currentPage = 1;
 var _filterTimer = null;
 var _refreshInterval = null;
 
+function apiHeaders(extra) {
+    var h = extra || {};
+    if (window.AUTH_USER_ID && window.AUTH_TOKEN) {
+        h['X-User-ID'] = String(window.AUTH_USER_ID);
+        h['X-Auth-Token'] = window.AUTH_TOKEN;
+    }
+    return h;
+}
+
 function statusBadge(s) {
     if (s === 'running') return 'success';
     if (s === 'stopped') return 'danger';

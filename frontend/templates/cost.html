@@ -107,7 +107,7 @@
 {% if summary and summary.total_hourly is defined %}
 (function() {
     var textColor = '#8892a6';
-    fetch('/api/cost-history')
+    fetch('/api/cost-history', { headers: apiHeaders() })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data || !data.length) return;
@@ -175,7 +175,7 @@
 {% endif %}
 
 (function() {
-    fetch('/api/budget/status')
+    fetch('/api/budget/status', { headers: apiHeaders() })
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (!d || d.status === 'not_set') {

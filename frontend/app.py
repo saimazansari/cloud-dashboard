@@ -99,7 +99,7 @@ def api_request(method, path, data=None, auth_data=None):
     headers = {}
     if data is not None:
         headers["Content-Type"] = "application/json"
-    auth = auth_data or session
+    auth = auth_data if auth_data is not None else session
     if auth.get("user_id") and auth.get("token"):
         headers["X-User-ID"] = str(auth["user_id"])
         headers["X-Auth-Token"] = auth["token"]
@@ -125,12 +125,16 @@ api_put = lambda p, d, auth_data=None: api_request("PUT", p, d, auth_data=auth_d
 
 @app.context_processor
 def inject_globals():
-    return {
+    ctx = {
         "google_client_id": GOOGLE_CLIENT_ID,
         "github_client_id": GITHUB_CLIENT_ID,
         "csrf_token": get_csrf_token(),
         "provider_colors": PROVIDER_COLORS,
     }
+    if session.get("user_id") and session.get("token"):
+        ctx["auth_user_id"] = session["user_id"]
+        ctx["auth_token"] = session["token"]
+    return ctx
 
 def derive_health(status):
     if status == "running":

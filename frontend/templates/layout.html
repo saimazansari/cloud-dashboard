@@ -63,6 +63,12 @@
 </div>
 {% endif %}
 <script src="/static/js/script.js?v=3"></script>
+{% if auth_user_id and auth_token %}
+<script>
+window.AUTH_USER_ID = {{ auth_user_id|tojson }};
+window.AUTH_TOKEN = {{ auth_token|tojson }};
+</script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

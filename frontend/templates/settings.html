@@ -55,7 +55,7 @@ function savePreferences() {
     status.textContent = 'Saving...';
     fetch('/api/user/preferences', {
         method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
+        headers: apiHeaders({'Content-Type': 'application/json'}),
         body: JSON.stringify(prefs)
     })
     .then(function(r) { return r.json(); })
@@ -68,7 +68,7 @@ function savePreferences() {
     });
 }
 
-fetch('/api/user/preferences')
+fetch('/api/user/preferences', { headers: apiHeaders() })
     .then(function(r) { return r.json(); })
     .then(function(prefs) {
         if (!prefs || prefs.error) return;

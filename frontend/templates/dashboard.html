@@ -311,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function openPanel(id) {
-    fetch('/api/resources/' + id)
+    fetch('/api/resources/' + id, { headers: apiHeaders() })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data || data.error) return;
@@ -374,7 +374,7 @@ function batchAction(action) {
     if (!ids.length) return;
     fetch('/api/resources/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: apiHeaders(),
         body: JSON.stringify({ action: action, ids: ids })
     }).then(function(r) { return r.json(); }).then(function(data) {
         if (data.error) { showToast(data.error, 'error'); return; }
@@ -383,7 +383,7 @@ function batchAction(action) {
     }).catch(function() { showToast('Batch action failed', 'error'); });
 }
 function refreshDashboard() {
-    fetch('/api/resources').then(function(r) { return r.json(); }).then(function(data) {
+    fetch('/api/resources', { headers: apiHeaders() }).then(function(r) { return r.json(); }).then(function(data) {
         if (!Array.isArray(data)) return;
         var tbody = document.querySelector('#resourceTable tbody');
         if (!tbody) return;
@@ -437,7 +437,7 @@ function startAutoRefresh() {
         });
         var el = document.getElementById('refreshTime');
         if (el) el.textContent = '0s ago';
-        fetch('/api/cost-summary').then(function(r) { return r.json(); }).then(function(c) {
+        fetch('/api/cost-summary', { headers: apiHeaders() }).then(function(r) { return r.json(); }).then(function(c) {
             if (c && c.total_monthly) {
                 var el = document.querySelector('.stat-card.g3 .stat-value');
                 if (el) {
