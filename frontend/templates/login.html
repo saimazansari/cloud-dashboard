@@ -9,6 +9,7 @@
     {% if error %}<div class="error" id="loginError">{{ error }}</div>{% endif %}
 
     <form method="post" class="auth-form" id="loginForm">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <div class="float-group">
             <input type="text" name="username" placeholder=" " required autocomplete="username" id="loginUser">
             <label for="loginUser">Username</label>
